@@ -71,6 +71,41 @@ var NFOODS = ld("il_nfoods", {
   "blueberry granola": { name:"Blueberry Granola", per100:{cal:471,p:10,c:64,f:20}, serving:{label:"55 g (1/2 cup)", grams:55} },
 
 });
+// Quick Add defaults (curated list shown as buttons in Nutrition)
+// You can edit this list in-app (Nutrition → Quick Add → Edit).
+var DEFAULT_QUICK = [
+  "chicken breast cooked",
+  "white rice cooked",
+  "ground beef 90% cooked",
+  "egg",
+  "canadian bacon",
+  "english muffin",
+  "bagel plain",
+  "greek yogurt nonfat",
+  "blueberry granola",
+  "potato baked",
+  "sweet potato baked",
+  "pasta cooked",
+  "banana",
+  "oats"
+];
+
+var NQUICK = ld("il_nquick", DEFAULT_QUICK);
+
+// sanitize (remove unknowns, duplicates, and exclude olive oil)
+(function(){
+  if(!Array.isArray(NQUICK)) NQUICK = DEFAULT_QUICK.slice();
+  var seen = {};
+  NQUICK = NQUICK.filter(function(k){
+    if(!k) return false;
+    k = String(k);
+    if(k === "olive oil") return false; // keep in foods DB but not quick add
+    if(seen[k]) return false;
+    seen[k]=1;
+    return true;
+  });
+})();
+
 
 // Compute macros for a food's default serving (or 100g fallback)
 function foodServingMacros(food){
@@ -604,19 +639,47 @@ if(view==="log"){
 
   h += '</div>';
 
-  // Quick add list
-  h += '<div class="card">';
-  h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Quick Add</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
-  Object.keys(NFOODS).sort().forEach(function(k){
-    var f = NFOODS[k];
-    h += '<button class="btn bs food-quick" data-k="' + k + '" style="text-align:left;padding:8px 10px">';
-    h += '<div style="font-size:12px;font-weight:700">' + f.name + '</div>';
-    var sm = foodServingMacros(f);
-    h += '<div style="font-size:9px;color:var(--mt)">' + sm.cal + ' cal · P' + sm.p + ' C' + sm.c + ' F' + sm.f + ' (' + sm.label + ')</div>';
-    h += '</button>';
+  
+  // Quick Add (curated)
+  var qkeys = (Array.isArray(NQUICK) ? NQUICK.slice() : []);
+  if (!qkeys.length) qkeys = DEFAULT_QUICK.slice();
+
+  // remove duplicates, unknowns, and exclude olive oil
+  var qseen = {};
+  qkeys = qkeys.filter(function(k){
+    if(!k) return false;
+    k = String(k);
+    if(k === "olive oil") return false;
+    if(qseen[k]) return false;
+    qseen[k]=1;
+    return !!NFOODS[k];
   });
-  h += '</div>';
+
+  // last resort fallback
+  if(!qkeys.length){
+    qkeys = Object.keys(NFOODS).filter(function(k){return k!=="olive oil";}).slice(0, 12);
+  }
+
+  h += '<div class="card">';
+  h +=   '<div style="font-size:13px;font-weight:700;margin-bottom:10px">⚡ Quick Add</div>';
+  h +=   '<div class="quick-grid">';
+  qkeys.forEach(function(k){
+    var f = NFOODS[k];
+    if(!f) return;
+    var ms = foodServingMacros(f) || {cal:0,p:0,c:0,f:0,serv:""};
+    var cal = isFinite(ms.cal) ? Math.round(ms.cal) : 0;
+    var p = isFinite(ms.p) ? Math.round(ms.p) : 0;
+    var serv = ms.serv || (f.serving ? f.serving.label : '');
+    h += '<button class="qfood food-quick" data-name="'+k+'">'
+       +   '<div style="font-weight:700;font-size:12px">'+f.name+'</div>'
+       +   '<div style="font-size:10px;color:var(--mt)">'+serv+' · '+cal+' cal · '+p+'P</div>'
+       + '</button>';
+  });
+  h +=   '</div>';
+  h +=   '<div style="margin-top:10px;display:flex;gap:8px">'
+       +     '<button class="btn bs" id="qfoods-edit" style="flex:1">✏️ Edit Quick Add</button>'
+       +     '<button class="btn bs" id="foods-btn" style="flex:1">📚 Food Library</button>'
+       +   '</div>';
   h += '</div>';
 
 } else if (view === "more") {
@@ -822,7 +885,126 @@ function bindEvents(){
     });
   });
 
-  // Nutrition: add food from inputs
+  
+  // Nutrition: Food library modal + Quick Add editor
+  var foodsBtn = document.getElementById("foods-btn");
+  if (foodsBtn) {
+    foodsBtn.addEventListener("click", function () {
+      var keys = Object.keys(NFOODS).sort(function(a,b){
+        var an=(NFOODS[a].name||a).toLowerCase(), bn=(NFOODS[b].name||b).toLowerCase();
+        return an.localeCompare(bn);
+      });
+
+      function openFoodsModal(filter){
+        filter = (filter||"").toLowerCase().trim();
+        var out = '<div style="padding:14px;max-width:520px;width:92vw">';
+        out += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">';
+        out +=   '<div style="font-size:16px;font-weight:800">📚 Food Library</div>';
+        out +=   '<button class="del" id="foods-close" style="font-size:22px;line-height:1">×</button>';
+        out += '</div>';
+        out += '<input class="inp" id="foods-search" placeholder="Search foods..." style="width:100%;margin-bottom:10px" value="'+(filter||'')+'">';
+        out += '<div style="max-height:60vh;overflow:auto;border:1px solid var(--c2);border-radius:12px;padding:8px;background:var(--c1)">';
+        var shown = 0;
+        keys.forEach(function(k){
+          var f = NFOODS[k];
+          var nm = (f.name||k);
+          if(filter && nm.toLowerCase().indexOf(filter)===-1) return;
+          var ms = foodServingMacros(f) || {cal:0,p:0,c:0,f:0,serv:""};
+          var cal = isFinite(ms.cal) ? Math.round(ms.cal) : 0;
+          var p = isFinite(ms.p) ? Math.round(ms.p) : 0;
+          var c = isFinite(ms.c) ? Math.round(ms.c) : 0;
+          var ff = isFinite(ms.f) ? Math.round(ms.f) : 0;
+          var serv = ms.serv || (f.serving ? f.serving.label : '');
+          out += '<div class="row" style="justify-content:space-between;gap:10px;padding:10px 6px;border-bottom:1px solid var(--c2)">';
+          out +=   '<div style="min-width:0">';
+          out +=     '<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+'</div>';
+          out +=     '<div style="font-size:10px;color:var(--mt)">'+serv+' · '+cal+' cal · '+p+'P / '+c+'C / '+ff+'F</div>';
+          out +=   '</div>';
+          out +=   '<button class="btn bp food-lib-add" data-name="'+k+'" style="padding:6px 10px;font-size:11px;white-space:nowrap">Add</button>';
+          out += '</div>';
+          shown++;
+        });
+        if(!shown) out += '<div style="padding:12px;font-size:11px;color:var(--mt)">No matches.</div>';
+        out += '</div>';
+        out += '</div>';
+        showModal(out);
+
+        setTimeout(function(){
+          var cbtn=document.getElementById("foods-close");
+          if(cbtn) cbtn.addEventListener("click", closeModal);
+
+          var sinp=document.getElementById("foods-search");
+          if(sinp){
+            sinp.addEventListener("input", function(){ openFoodsModal(this.value); });
+            sinp.focus();
+            sinp.setSelectionRange(sinp.value.length, sinp.value.length);
+          }
+
+          document.querySelectorAll(".food-lib-add").forEach(function(btn){
+            btn.addEventListener("click", function(){
+              var k=this.getAttribute("data-name"); if(!k||!NFOODS[k]) return;
+              var it=calcItemFromFood(NFOODS[k],0,1); if(!it) return;
+              if(!NLOG[selDate]) NLOG[selDate]=[];
+              NLOG[selDate].push(it);
+              saveAll(); render(); closeModal();
+            });
+          });
+        },20);
+      }
+
+      openFoodsModal("");
+    });
+  }
+
+  var qEdit = document.getElementById("qfoods-edit");
+  if (qEdit) {
+    qEdit.addEventListener("click", function(){
+      var keys = Object.keys(NFOODS).filter(function(k){return k!=="olive oil";}).sort(function(a,b){
+        var an=(NFOODS[a].name||a).toLowerCase(), bn=(NFOODS[b].name||b).toLowerCase();
+        return an.localeCompare(bn);
+      });
+      var cur = {};
+      (Array.isArray(NQUICK)?NQUICK:[]).forEach(function(k){cur[k]=1;});
+      var html = '<div style="padding:14px;max-width:520px;width:92vw">';
+      html += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">';
+      html +=   '<div style="font-size:16px;font-weight:800">✏️ Edit Quick Add</div>';
+      html +=   '<button class="del" id="qfoods-close" style="font-size:22px;line-height:1">×</button>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Pick up to 14 foods to show as quick buttons.</div>';
+      html += '<div style="max-height:60vh;overflow:auto;border:1px solid var(--c2);border-radius:12px;padding:8px;background:var(--c1)">';
+      keys.forEach(function(k){
+        var f=NFOODS[k], nm=f.name||k;
+        html += '<label class="row" style="justify-content:space-between;gap:10px;padding:8px 6px;border-bottom:1px solid var(--c2);cursor:pointer">';
+        html +=   '<div style="min-width:0"><div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+'</div><div style="font-size:10px;color:var(--mt)">'+(f.serving?f.serving.label:"")+'</div></div>';
+        html +=   '<input type="checkbox" class="qfoods-chk" data-k="'+k+'" '+(cur[k]?'checked':'')+'>';
+        html += '</label>';
+      });
+      html += '</div>';
+      html += '<div class="row" style="gap:8px;margin-top:10px">';
+      html +=   '<button class="btn bs" id="qfoods-cancel" style="flex:1">Cancel</button>';
+      html +=   '<button class="btn bp" id="qfoods-save" style="flex:1">Save</button>';
+      html += '</div></div>';
+      showModal(html);
+      setTimeout(function(){
+        var c=document.getElementById("qfoods-close"); if(c) c.addEventListener("click", closeModal);
+        var cc=document.getElementById("qfoods-cancel"); if(cc) cc.addEventListener("click", closeModal);
+        var svb=document.getElementById("qfoods-save");
+        if(svb) svb.addEventListener("click", function(){
+          var pick=[];
+          document.querySelectorAll(".qfoods-chk").forEach(function(ch){
+            if(ch.checked) pick.push(ch.getAttribute("data-k"));
+          });
+          if(pick.length>14){ alert("Pick 14 or fewer."); return; }
+          NQUICK = pick;
+          sv("il_nquick", NQUICK);
+          closeModal();
+          render();
+        });
+      },20);
+    });
+  }
+
+// Nutrition: add food from inputs
   var addFoodBtn = document.getElementById("add-food-btn");
   if (addFoodBtn) {
     addFoodBtn.addEventListener("click", function () {
