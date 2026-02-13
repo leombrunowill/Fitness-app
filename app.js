@@ -338,9 +338,27 @@ if(view==="log"){
   var wD=Object.keys(W).sort();if(wD.length>=2){h+='<div class="card"><div style="font-size:13px;font-weight:700;margin-bottom:2px">📊 Volume</div><div style="font-size:10px;color:var(--mt);margin-bottom:10px">Per session</div><canvas id="vol-ch"></canvas></div>'}
  
 } else if (view === "nutrition") {
-
   var dayData = dayNutrition(selDate);
   var totals = dayData.totals;
+
+ h += '<div class="sect">🍽️ Nutrition</div>';
+// Add Food Form
+h += '<div class="card">';
+h += '<div style="font-size:13px;font-weight:700;margin-bottom:10px">➕ Log Food</div>';
+
+h += '<div class="row" style="gap:8px;margin-bottom:8px">';
+h += '<input type="text" id="food-name" class="inp" placeholder="Food name" style="flex:1">';
+h += '</div>';
+
+h += '<div class="row" style="gap:8px;margin-bottom:8px">';
+h += '<input type="number" id="food-grams" class="inp" placeholder="Grams" style="flex:1">';
+h += '<input type="number" id="food-serv" class="inp" placeholder="Servings" style="flex:1">';
+h += '</div>';
+
+h += '<button class="btn bp" id="add-food-btn" style="width:100%">Add Food</button>';
+h += '</div>';
+
+
 
   h += '<div class="sect">🍽️ Nutrition</div>';
 
