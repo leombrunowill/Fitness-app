@@ -248,12 +248,12 @@ if(view==="log"){
   } else if(step===1){
     h+='<button class="btn bs back-btn" style="padding:6px 12px;font-size:12px;margin-bottom:8px">← Back</button>';
     h+='<div class="row" style="margin-bottom:8px;justify-content:space-between"><div class="row"><span style="font-size:18px">'+ICO[selGrp]+'</span><span style="font-weight:800;font-size:14px">'+selGrp+'</span></div><button class="manage-ex" id="toggle-manage">'+(showManage?'✓ Done':'⚙️ Manage')+'</button></div>';
-    h+='<input type="text" class="search-inp" id="ex-search" placeholder="🔍 Search exercises..." value="'+exSearch+'">';
-    h+='<div class="row" style="margin-bottom:8px;gap:6px"><input type="text" class="inp" id="cx-inp" style="flex:1;text-align:left;padding:0 12px;font-size:12px" placeholder="Add custom exercise..."><button class="btn bp" id="cx-add" style="padding:8px 14px;font-size:12px">+</button></div>';
+    h+='<input type="text" class="search-inp" id="ex-search" placeholder="🔍 Search exercises// ..." value="'+exSearch+'">';
+    h+='<div class="row" style="margin-bottom:8px;gap:6px"><input type="text" class="inp" id="cx-inp" style="flex:1;text-align:left;padding:0 12px;font-size:12px" placeholder="Add custom exercise// ..."><button class="btn bp" id="cx-add" style="padding:8px 14px;font-size:12px">+</button></div>';
     getExList(selGrp).forEach(function(name){
       if(showManage){
         var fav=isFav(selGrp,name),hid=isHidden(selGrp,name),cust=isCustom(selGrp,name);
-        h+='<div class="row" style="margin-bottom:4px;gap:4px"><button class="fav-star fav-btn" data-ex="'+name+'">'+(fav?'⭐':'☆')+'</button><div style="flex:1;font-size:12px;font-weight:600;opacity:'+(hid?.4:1)+'">'+name+(cust?' <span style="font-size:9px;color:var(--pu)">★</span>':'')+'</div><button class="btn bs hide-toggle" data-ex="'+name+'" style="padding:3px 8px;font-size:9px">'+(hid?'Show':'Hide')+'</button>';
+        h+='<div class="row" style="margin-bottom:4px;gap:4px"><button class="fav-star fav-btn" data-ex="'+name+'">'+(fav?'⭐':'☆')+'</button><div style="flex:1;font-size:12px;font-weight:600;opacity:'+(hid ? 0.4 : 1)+'">'+name+(cust?' <span style="font-size:9px;color:var(--pu)">★</span>':'')+'</div><button class="btn bs hide-toggle" data-ex="'+name+'" style="padding:3px 8px;font-size:9px">'+(hid?'Show':'Hide')+'</button>';
         if(cust)h+='<button class="del cx-del" data-ex="'+name+'">🗑</button>';
         h+='</div>';
       } else {
@@ -282,7 +282,7 @@ if(view==="log"){
     if(topW>=95){var wu=calcWarmup(topW);if(wu.length){h+='<div style="background:var(--c2);border-radius:10px;padding:10px;margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:var(--or);margin-bottom:6px">🔥 Suggested Warmup</div>';wu.forEach(function(s){h+='<div class="wu-row"><span style="color:var(--mt)">'+s.r+' reps</span><span style="font-weight:700">'+s.w+' lbs</span></div>'});h+='</div>'}}
     // Plate calc
     if(topW>=50){h+='<div style="background:var(--c2);border-radius:10px;padding:10px;margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:var(--bl);margin-bottom:4px">🔢 Plate Calculator ('+topW+' lbs)</div>'+plateViz(topW)+'</div>'}
-    h+='<textarea class="txta" id="ex-note" placeholder="Notes (optional)..." style="margin-bottom:10px">'+note+'</textarea>';
+    h+='<textarea class="txta" id="ex-note" placeholder="Notes (optional)// ..." style="margin-bottom:10px">'+note+'</textarea>';
     h+='<div class="row" style="margin-bottom:12px"><span id="ss-toggle" style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer"><span style="width:20px;height:20px;border-radius:6px;border:2px solid '+(isSuper?'var(--pu)':'var(--c3)')+';background:'+(isSuper?'var(--pu)':'none')+';display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff">'+(isSuper?'✓':'')+'</span>⚡ Superset</span></div>';
     h+='<button class="btn bp bf" id="log-ex" style="padding:14px">Log Exercise</button>';
   }
@@ -370,25 +370,9 @@ if(view==="log"){
   }
 
   h += '</div>';
-}
- 
-if(view==="log") {
-  ...
-} else if(view==="templates") {
-  ...
-} else if(view==="history") {
-  ...
-} else if(view==="progress") {
-  ...
-} else if(view==="nutrition") {
-  ...
-} else if(view==="more") {
-  ...
-}
+ } else if (view === "more") {
 
-app.innerHTML = h;
-bindEvents();
-...
+
 
   // Sub tabs
   h+='<div class="pills" style="margin-bottom:12px">';
