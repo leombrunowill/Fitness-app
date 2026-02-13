@@ -84,7 +84,10 @@ function todayQuote(){var idx=Math.floor(new Date().getTime()/86400000)%QUOTES.l
 function startRest(sec){clearInterval(timerInt);timerSec=sec;timerOn=true;updTimer();timerInt=setInterval(function(){timerSec--;updTimer();if(timerSec<=0){clearInterval(timerInt);timerOn=false;try{if(navigator.vibrate)navigator.vibrate([200,100,200,100,200])}catch(e){}updTimer()}},1000)}
 function stopRest(){clearInterval(timerInt);timerOn=false;timerSec=0;updTimer()}
 function updTimer(){var el=document.getElementById("tbar"),tt=document.getElementById("ttime"),tg=document.getElementById("tgo");if(!timerOn&&timerSec<=0){el.classList.remove("on");return}el.classList.add("on");var m=Math.floor(Math.max(timerSec,0)/60),s=Math.max(timerSec,0)%60;tt.textContent=m+":"+(s<10?"0":"")+s;tt.style.color=timerSec<=5&&timerSec>0?"var(--rd)":"var(--tx)";tg.style.display=timerSec<=0?"inline":"none"}
-document.getElementById("tstop").addEventListener("click",stopRest);
+var tstop = document.getElementById("tstop");
+if (tstop) {
+  tstop.addEventListener("click", stopRest);
+}
  
 function applyTheme(){document.body.setAttribute("data-theme",TH==="light"?"light":"");document.getElementById("thm-btn").textContent=TH==="dark"?"🌙":"☀️"}
 document.getElementById("thm-btn").addEventListener("click",function(){TH=TH==="dark"?"light":"dark";applyTheme();sv("il_th",TH)});applyTheme();
@@ -341,3 +344,4 @@ function bindEvents(){
 }
 render();
 });
+
