@@ -45,9 +45,67 @@ var FAVS=ld("il_fav",{}),HIDDEN=ld("il_hid",{}),RATINGS=ld("il_rat",{}),GOALS=ld
 var MEAS=ld("il_meas",{}); // {date:{field:value}}
 var ACHV=ld("il_achv",{}); // {id:date}
 var WTARGETS=ld("il_wt",{}); // {group:targetSetsPerWeek}
- var NLOG = ld("il_nlog", {});
-var NFOODS = ld("il_nfoods", {});
+ 
+ // =====================
+// NUTRITION (DATA MODEL)
+// =====================
+// NLOG: { "YYYY-MM-DD": [ { id, name, grams, servings, cal, p, c, f, at } ] }
+// NFOODS: { "<nameLower>": { name, per100: { cal, p, c, f }, serving: { label, grams } } }
+// NGOALS: { cal, p, c, f }
+var NLOG = ld("il_nlog", {});
+var NFOODS = ld("il_nfoods", {
+  "chicken breast cooked": { name:"Chicken Breast (cooked)", per100:{cal:165,p:31,c:0,f:3.6}, serving:{label:"6 oz", grams:170} },
+  "white rice cooked":     { name:"White Rice (cooked)",     per100:{cal:130,p:2.7,c:28.2,f:0.3}, serving:{label:"150 g", grams:150} },
+  "egg":                   { name:"Whole Egg",               per100:{cal:143,p:13,c:1.1,f:9.5}, serving:{label:"1 large", grams:50} },
+  "oats":                  { name:"Oats (dry)",              per100:{cal:389,p:16.9,c:66.3,f:6.9}, serving:{label:"40 g", grams:40} },
+  "banana":                { name:"Banana",                  per100:{cal:89,p:1.1,c:23,f:0.3}, serving:{label:"1 medium", grams:118} },
+  "olive oil":             { name:"Olive Oil",               per100:{cal:884,p:0,c:0,f:100}, serving:{label:"1 tbsp", grams:13.5} },
+  "greek yogurt nonfat":   { name:"Greek Yogurt (nonfat)",   per100:{cal:59,p:10.3,c:3.6,f:0.4}, serving:{label:"170 g cup", grams:170} }
+});
 var NGOALS = ld("il_ngoals", { cal: 2200, p: 175, c: 220, f: 65 });
+
+function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
+function r1(n){ return Math.round((n+Number.EPSILON)*10)/10; }
+function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
+
+function foodKey(name){ return (name||"").trim().toLowerCase(); }
+
+function calcItemFromFood(food, grams, servings){
+  grams = Math.max(0, grams||0);
+  servings = Math.max(0, servings||0);
+  var g = grams>0 ? grams : (food.serving && food.serving.grams ? food.serving.grams*servings : 0);
+  if(!g && servings && food.serving && food.serving.grams) g = food.serving.grams*servings;
+  var mul = g/100;
+  return {
+    grams: g,
+    cal: r1(food.per100.cal*mul),
+    p: r1(food.per100.p*mul),
+    c: r1(food.per100.c*mul),
+    f: r1(food.per100.f*mul)
+  };
+}
+
+function dayNutrition(date){
+  var items = NLOG[date] || [];
+  var t={cal:0,p:0,c:0,f:0};
+  items.forEach(function(it){
+    t.cal += (it.cal||0);
+    t.p += (it.p||0);
+    t.c += (it.c||0);
+    t.f += (it.f||0);
+  });
+  return { items: items, totals: { cal:r1(t.cal), p:r1(t.p), c:r1(t.c), f:r1(t.f) } };
+}
+
+function goalPct(val, goal){ if(!goal || goal<=0) return 0; return clamp((val/goal)*100, 0, 150); }
+
+function macroColor(pct){
+  // simple: under = blue/purple, hit = green, over = orange/red
+  if(pct >= 100 && pct <= 115) return "var(--gn)";
+  if(pct > 115) return "var(--or)";
+  return "linear-gradient(to right,var(--bl),var(--pu))";
+}
+
  
  
 function saveAll(){sv("il_w",W);sv("il_bw",BW);sv("il_tpl",TPL);sv("il_pr",PR);sv("il_cx",CX);sv("il_th",TH);sv("il_fav",FAVS);sv("il_hid",HIDDEN);sv("il_rat",RATINGS);sv("il_goals",GOALS); sv("il_nlog",NLOG);
@@ -348,14 +406,88 @@ function bindEvents(){
   var pb=document.getElementById("plate-btn");if(pb)pb.addEventListener("click",function(){var w=parseInt(document.getElementById("plate-w").value);var out=document.getElementById("plate-out");if(!w||w<45){out.innerHTML='<div style="color:var(--rd);font-size:12px">Min 45 lbs (bar)</div>';return}out.innerHTML=plateViz(w)});
   // Warmup
   var wub=document.getElementById("wu-btn");if(wub)wub.addEventListener("click",function(){var w=parseInt(document.getElementById("wu-w").value);var out=document.getElementById("wu-out");if(!w||w<50){out.innerHTML='<div style="color:var(--rd);font-size:12px">Enter working weight</div>';return}var wu=calcWarmup(w);var html='';wu.forEach(function(s){html+='<div class="wu-row"><span style="color:var(--mt)">'+s.r+' reps</span><span style="font-weight:700">'+s.w+' lbs</span></div>'});html+='<div class="wu-row" style="border:none;color:var(--gn);font-weight:700"><span>Working sets</span><span>'+w+' lbs</span></div>';out.innerHTML=html});
-  // Export
-  var exp=document.getElementById("export-btn");if(exp)exp.addEventListener("click",function(){var data=JSON.stringify({workouts:W,bodyWeight:BW,templates:TPL,prs:PR,customExercises:CX,favorites:FAVS,hidden:HIDDEN,ratings:RATINGS,goals:GOALS,measurements:MEAS,achievements:ACHV,weeklyTargets:WTARGETS},null,2);var blob=new Blob([data],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="ironlog_"+tod()+".json";a.click()});
-  var imp=document.getElementById("import-btn"),impF=document.getElementById("import-file");
-  if(imp&&impF){imp.addEventListener("click",function(){impF.click()});impF.addEventListener("change",function(e){var file=e.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=function(ev){try{var d=JSON.parse(ev.target.result);if(d.workouts)W=d.workouts;if(d.bodyWeight)BW=d.bodyWeight;if(d.templates)TPL=d.templates;if(d.prs)PR=d.prs;if(d.customExercises)CX=d.customExercises;if(d.favorites)FAVS=d.favorites;if(d.hidden)HIDDEN=d.hidden;if(d.ratings)RATINGS=d.ratings;if(d.goals)GOALS=d.goals;if(d.measurements)MEAS=d.measurements;if(d.achievements)ACHV=d.achievements;if(d.weeklyTargets)WTARGETS=d.weeklyTargets;saveAll();closeModal();render();showModal('<div style="text-align:center;padding:20px"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:16px;font-weight:700">Import Successful!</div><div style="margin-top:12px"><button class="btn bp" id="imp-close">Done</button></div></div>');setTimeout(function(){var c=document.getElementById("imp-close");if(c)c.addEventListener("click",closeModal)},50)}catch(err){alert("Invalid file")}};reader.readAsText(file)})}
-  var rb=document.getElementById("reset-btn");if(rb)rb.addEventListener("click",function(){if(!confirm("Are you sure? This will delete ALL your data."))return;W={};BW={};TPL=[];PR={};CX={};FAVS={};HIDDEN={};RATINGS={};GOALS={};MEAS={};ACHV={};WTARGETS={};saveAll();render()});
-}
-render();
-});
+    // Export
+  var exp = document.getElementById("export-btn");
+  if (exp) exp.addEventListener("click", function () {
+    var data = JSON.stringify({
+      workouts: W,
+      bodyWeight: BW,
+      templates: TPL,
+      prs: PR,
+      customExercises: CX,
+      favorites: FAVS,
+      hidden: HIDDEN,
+      ratings: RATINGS,
+      goals: GOALS,
+      measurements: MEAS,
+      achievements: ACHV,
+      weeklyTargets: WTARGETS,
+
+      // nutrition
+      nlog: NLOG,
+      nfoods: NFOODS,
+      ngoals: NGOALS
+    }, null, 2);
+
+    var blob = new Blob([data], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "ironlog_" + tod() + ".json";
+    a.click();
+  });
+
+  // Import
+  var imp = document.getElementById("import-btn"),
+      impF = document.getElementById("import-file");
+
+  if (imp && impF) {
+    imp.addEventListener("click", function () { impF.click(); });
+
+    impF.addEventListener("change", function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        try {
+          var d = JSON.parse(ev.target.result);
+
+          if (d.workouts) W = d.workouts;
+          if (d.bodyWeight) BW = d.bodyWeight;
+          if (d.templates) TPL = d.templates;
+          if (d.prs) PR = d.prs;
+          if (d.customExercises) CX = d.customExercises;
+          if (d.favorites) FAVS = d.favorites;
+          if (d.hidden) HIDDEN = d.hidden;
+          if (d.ratings) RATINGS = d.ratings;
+          if (d.goals) GOALS = d.goals;
+          if (d.measurements) MEAS = d.measurements;
+          if (d.achievements) ACHV = d.achievements;
+          if (d.weeklyTargets) WTARGETS = d.weeklyTargets;
+
+          // nutrition
+          if (d.nlog) NLOG = d.nlog;
+          if (d.nfoods) NFOODS = d.nfoods;
+          if (d.ngoals) NGOALS = d.ngoals;
+
+          saveAll();
+          closeModal();
+          render();
+
+          showModal('<div style="text-align:center;padding:20px"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:16px;font-weight:700">Import Successful!</div><div style="margin-top:12px"><button class="btn bp" id="imp-close">Done</button></div></div>');
+          setTimeout(function () {
+            var c = document.getElementById("imp-close");
+            if (c) c.addEventListener("click", closeModal);
+          }, 50);
+
+        } catch (err) {
+          alert("Invalid file");
+        }
+      };
+
+      reader.readAsText(file);
+    });
+  }
 
 
 
