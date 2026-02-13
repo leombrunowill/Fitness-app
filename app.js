@@ -659,7 +659,7 @@ if (addFoodBtn) {
     render();
   });
 }
- // end bindEvents
+} // end bindEvents
 
 render();
 }); // end DOMContentLoaded
