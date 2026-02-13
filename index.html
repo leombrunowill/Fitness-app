@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Iron Log">
+<meta name="theme-color" content="#030712">
+<title>Iron Log</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="hdr"><div class="hdr-in"><div class="logo">Iron Log</div><div class="row" style="gap:4px"><button class="thm" id="thm-btn">🌙</button></div></div></div>
+<div class="tbar" id="tbar"><span style="font-size:12px;font-weight:600;color:var(--mt)">REST</span><span class="ttime" id="ttime">0:00</span><span id="tgo" style="display:none;font-size:14px;font-weight:800;color:var(--gn)">GO! 💪</span><button class="tbtn" style="background:var(--rd);color:#fff" id="tstop">✕</button></div>
+<div id="confetti-mount"></div>
+<div class="ctn" id="app"></div>
+<div class="bnav">
+<button class="nb on" data-v="log"><span class="ni">🏋️</span>Log</button>
+<button class="nb" data-v="templates"><span class="ni">📁</span>Routines</button>
+<button class="nb" data-v="history"><span class="ni">📋</span>History</button>
+<button class="nb" data-v="progress"><span class="ni">📈</span>Progress</button>
+<button class="nb" data-v="more"><span class="ni">⚡</span>More</button>
+</div>
+<div id="mover" style="display:none"></div>
+<script src="app.js"></script>
+</body>
+</html>
