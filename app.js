@@ -71,6 +71,19 @@ var NFOODS = ld("il_nfoods", {
   "blueberry granola": { name:"Blueberry Granola", per100:{cal:471,p:10,c:64,f:20}, serving:{label:"55 g (1/2 cup)", grams:55} },
 
 });
+
+// Compute macros for a food's default serving (or 100g fallback)
+function foodServingMacros(food){
+  if(!food || !food.per100) return {grams:100,label:"100 g",cal:0,p:0,c:0,f:0};
+  var grams = (food.serving && food.serving.grams) ? food.serving.grams : 100;
+  var label = (food.serving && food.serving.label) ? food.serving.label : (grams + " g");
+  var cal = Math.round((food.per100.cal || 0) * grams / 100);
+  var p   = Math.round((food.per100.p   || 0) * grams / 100);
+  var c   = Math.round((food.per100.c   || 0) * grams / 100);
+  var f   = Math.round((food.per100.f   || 0) * grams / 100);
+  return {grams:grams,label:label,cal:cal,p:p,c:c,f:f};
+}
+
 // Normalize foods so the UI can show per-serving macros even when a food is defined per-100g.
 (function normalizeFoods(){
   Object.keys(NFOODS || {}).forEach(function(k){
@@ -88,6 +101,84 @@ var NFOODS = ld("il_nfoods", {
 })();
 
 var NGOALS = ld("il_ngoals", { cal: 2200, p: 175, c: 220, f: 65 });
+
+// Nutrition settings (auto targets)
+var NSET = ld("il_nset", { auto:true, mode:"cut", calAdj:0, protPerLb:0.9, steps:10000, wpw:5, lastAdjCheck:"" });
+
+function latestBodyWeight(){
+  var ds = Object.keys(BW||{}).sort();
+  if(!ds.length) return 0;
+  var last = ds[ds.length-1];
+  var w = parseFloat(BW[last]);
+  return isNaN(w)?0:w;
+}
+
+function avgWorkoutsPerWeek(days){
+  days = days || 28;
+  var keys = Object.keys(W||{}).sort();
+  if(!keys.length) return 0;
+  var now = new Date();
+  var start = new Date(now);
+  start.setDate(start.getDate() - days);
+  var cnt = 0;
+  keys.forEach(function(d){
+    try{
+      var dt = new Date(d+"T00:00:00");
+      if(dt >= start && dt <= now && W[d] && W[d].length) cnt++;
+    }catch(e){}
+  });
+  return (cnt / (days/7));
+}
+
+function calcAutoGoals(){
+  // Auto nutrition targets for leaning out (12–15% BF goal) w/ 5x training + ~10k steps/day.
+  // Uses: latest bodyweight, workout frequency, optional weekly smart adjustment (calAdj).
+  var bwKeys = Object.keys(BW||{}).sort();
+  var bw = bwKeys.length ? Number(BW[bwKeys[bwKeys.length-1]]) : 0;
+  if(!bw || isNaN(bw)) bw = 180; // fallback if no weight logged yet
+
+  var mode = NSET.mode || "cut";
+  var mult = (mode==="cut") ? 13.5 : (mode==="bulk") ? 16.0 : 15.0;
+
+  // Workout frequency: either user setting or inferred
+  var wpw = Number(NSET.wpw)||0;
+  if(!wpw || isNaN(wpw) || wpw<1) wpw = avgWorkoutsPerWeek() || 5;
+  NSET.wpw = wpw;
+
+  var cal = bw * mult;
+  cal += wpw * 30; // training bump
+  cal += Math.round(((Number(NSET.steps)||10000)/10000) * 150); // steps bump (~10k/day)
+
+  // Smart weekly adjustment based on weight + strength trend
+  var tweak = smartCalAdj(tod());
+  if(tweak){
+    NSET.calAdj = clamp((Number(NSET.calAdj)||0) + tweak, -500, 500);
+    NSET.lastAdjCheck = tod();
+  }
+
+  cal += (Number(NSET.calAdj)||0);
+  cal = clamp(Math.round(cal), 1200, 4200);
+
+  var p = Math.round(bw * (Number(NSET.protPerLb)||0.9));
+  p = clamp(p, 120, 260);
+
+  var f = Math.round(bw * 0.30);
+  f = clamp(f, 45, 120);
+
+  var c = Math.max(0, Math.round((cal - (p*4) - (f*9)) / 4));
+
+  NGOALS = { cal:cal, p:p, c:c, f:f };
+  sv("il_ngoals", NGOALS);
+  sv("il_nset", NSET);
+}
+
+function updateGoalsIfAuto(){
+  if(NSET && NSET.auto){
+    var g = calcAutoGoals();
+    NGOALS = { cal: g.cal, p: g.p, c: g.c, f: g.f };
+    sv("il_ngoals", NGOALS);
+  }
+}
 
 function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 function r1(n){ return Math.round((n+Number.EPSILON)*10)/10; }
@@ -274,6 +365,7 @@ function plateViz(total){if(total<=45)return'<div style="text-align:center;font-
  
 // ═══ RENDER ═══
 function render(){
+updateGoalsIfAuto();
 var app=document.getElementById("app"),day=W[selDate]||[],h="";
  
 if(view==="log"){
@@ -454,6 +546,41 @@ if(view==="log"){
   h += '</div>';
   h += '</div>';
 
+  // Targets (auto from body weight + goal mode)
+  var g = calcAutoGoals();
+  h += '<div class="card">';
+  h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h += '<div style="font-size:13px;font-weight:700">🎯 Targets</div>';
+  h += '<div style="font-size:10px;color:var(--mt)">BW '+Math.round(g.bw)+' lbs · '+g.mode+' · ~'+g.wpw.toFixed(1)+'/wk</div>';
+  h += '</div>';
+
+  function bar(lbl, cur, tgt){
+    tgt = tgt || 0;
+    var pct = tgt ? Math.min(100, Math.round((cur/tgt)*100)) : 0;
+    return '<div style="margin-bottom:8px">'
+      + '<div class="row" style="justify-content:space-between;font-size:10px;color:var(--mt);margin-bottom:3px"><span>'+lbl+'</span><span>'+cur+' / '+tgt+'</span></div>'
+      + '<div style="height:7px;background:var(--c2);border-radius:6px;overflow:hidden">'
+      + '<div style="height:100%;width:'+pct+'%;background:'+(pct>=100?'var(--gn)':'linear-gradient(to right,var(--bl),var(--pu))')+'"></div>'
+      + '</div></div>';
+  }
+
+  h += bar('Calories', totals.cal, NGOALS.cal);
+  h += bar('Protein (g)', totals.p, NGOALS.p);
+  h += bar('Carbs (g)', totals.c, NGOALS.c);
+  h += bar('Fat (g)', totals.f, NGOALS.f);
+
+  // Mode toggle
+  h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">';
+  ['cut','maintain','bulk'].forEach(function(mo){
+    h += '<button class="btn bs goal-mode'+(NSET.mode===mo?' on':'')+'" data-mode="'+mo+'" style="flex:1;min-width:80px;padding:8px 6px;font-size:11px">'
+      + (mo==='cut'?'Cut':'') + (mo==='maintain'?'Maintain':'') + (mo==='bulk'?'Bulk':'')
+      + '</button>';
+  });
+  h += '</div>';
+
+  h += '</div>';
+
+
   // Food log
   h += '<div class="card">';
   h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Food Log</div>';
@@ -485,7 +612,8 @@ if(view==="log"){
     var f = NFOODS[k];
     h += '<button class="btn bs food-quick" data-k="' + k + '" style="text-align:left;padding:8px 10px">';
     h += '<div style="font-size:12px;font-weight:700">' + f.name + '</div>';
-    h += '<div style="font-size:9px;color:var(--mt)">' + f.cal + ' cal · P' + f.p + ' C' + f.c + ' F' + f.f + ' (per sv)</div>';
+    var sm = foodServingMacros(f);
+    h += '<div style="font-size:9px;color:var(--mt)">' + sm.cal + ' cal · P' + sm.p + ' C' + sm.c + ' F' + sm.f + ' (' + sm.label + ')</div>';
     h += '</button>';
   });
   h += '</div>';
@@ -738,7 +866,23 @@ function bindEvents(){
     });
   }
 
-} // end bindEvents
+} 
+
+  // Nutrition: goal mode buttons (auto targets)
+  document.querySelectorAll(".goal-mode").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var m = this.getAttribute("data-mode");
+      if(!m) return;
+      if(!NSET) NSET = {auto:true, mode:"maintain", calAdj:0, protPerLb:1.0};
+      NSET.auto = true;
+      NSET.mode = m;
+      sv("il_nset", NSET);
+      updateGoalsIfAuto();
+      render();
+    });
+  });
+
+// end bindEvents
 
 render();
 }); // end DOMContentLoaded
