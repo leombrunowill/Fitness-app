@@ -322,7 +322,42 @@ if(view==="log"){
   if(allE.length){if(!selLift||allE.indexOf(selLift)<0)selLift=allE[0];h+='<div class="pills">';allE.forEach(function(e){h+='<button class="pill lift-pill'+(e===selLift?' on':'')+'" data-ex="'+e+'">'+e+'</button>'});h+='</div>';var ld2=liftHist(selLift);if(ld2.length>=2){var df2=ld2[ld2.length-1].max-ld2[0].max;h+='<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Latest: <strong style="color:var(--yl)">'+ld2[ld2.length-1].max+'</strong> <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;background:'+(df2>=0?'rgba(34,197,94,.15)':'rgba(239,68,68,.15)')+';color:'+(df2>=0?'#4ade80':'#f87171')+'">'+(df2>0?'+':'')+df2+'</span></div><canvas id="lift-ch"></canvas>'}else h+='<div style="font-size:11px;color:var(--mt);padding:16px;text-align:center">Need 2+ sessions.</div>'}else h+='<div style="padding:16px;text-align:center;font-size:11px;color:var(--mt)">No data.</div>';h+='</div>';
   var wD=Object.keys(W).sort();if(wD.length>=2){h+='<div class="card"><div style="font-size:13px;font-weight:700;margin-bottom:2px">📊 Volume</div><div style="font-size:10px;color:var(--mt);margin-bottom:10px">Per session</div><canvas id="vol-ch"></canvas></div>'}
  
-} else if(view==="more"){
+} } else if (view === "nutrition") {
+
+  var dayData = dayNutrition(selDate);
+  var totals = dayData.totals;
+
+  h += '<div class="sect">🍽️ Nutrition</div>';
+
+  h += '<div class="card">';
+  h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Daily Totals</div>';
+
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">';
+  h += '<div><div style="font-size:16px;font-weight:800">'+totals.cal+'</div><div style="font-size:10px;color:var(--mt)">Calories</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">'+totals.p+'g</div><div style="font-size:10px;color:var(--mt)">Protein</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">'+totals.c+'g</div><div style="font-size:10px;color:var(--mt)">Carbs</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">'+totals.f+'g</div><div style="font-size:10px;color:var(--mt)">Fat</div></div>';
+  h += '</div>';
+  h += '</div>';
+
+  h += '<div class="card">';
+  h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Food Log</div>';
+
+  if (!dayData.items.length) {
+    h += '<div style="font-size:11px;color:var(--mt)">No food logged today.</div>';
+  } else {
+    dayData.items.forEach(function(it){
+      h += '<div style="display:flex;justify-content:space-between;margin-bottom:6px">';
+      h += '<div style="font-size:12px;font-weight:600">'+it.name+'</div>';
+      h += '<div style="font-size:11px;color:var(--mt)">'+it.cal+' cal</div>';
+      h += '</div>';
+    });
+  }
+
+  h += '</div>';
+}
+ 
+else if(view==="more"){
   // Sub tabs
   h+='<div class="pills" style="margin-bottom:12px">';
   ["prs","achievements","tools","data"].forEach(function(t){var labels={prs:"🏆 PRs",achievements:"🏅 Achievements",tools:"🔧 Tools",data:"💾 Data"};h+='<button class="pill more-tab'+(moreTab===t?' on':'')+'" data-t="'+t+'">'+labels[t]+'</button>'});
@@ -503,6 +538,7 @@ function bindEvents(){
 render();
 }); // end DOMContentLoaded
  
+
 
 
 
