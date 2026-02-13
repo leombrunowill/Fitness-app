@@ -45,8 +45,14 @@ var FAVS=ld("il_fav",{}),HIDDEN=ld("il_hid",{}),RATINGS=ld("il_rat",{}),GOALS=ld
 var MEAS=ld("il_meas",{}); // {date:{field:value}}
 var ACHV=ld("il_achv",{}); // {id:date}
 var WTARGETS=ld("il_wt",{}); // {group:targetSetsPerWeek}
+ var NLOG = ld("il_nlog", {});
+var NFOODS = ld("il_nfoods", {});
+var NGOALS = ld("il_ngoals", { cal: 2200, p: 175, c: 220, f: 65 });
  
-function saveAll(){sv("il_w",W);sv("il_bw",BW);sv("il_tpl",TPL);sv("il_pr",PR);sv("il_cx",CX);sv("il_th",TH);sv("il_fav",FAVS);sv("il_hid",HIDDEN);sv("il_rat",RATINGS);sv("il_goals",GOALS);sv("il_meas",MEAS);sv("il_achv",ACHV);sv("il_wt",WTARGETS)}
+ 
+function saveAll(){sv("il_w",W);sv("il_bw",BW);sv("il_tpl",TPL);sv("il_pr",PR);sv("il_cx",CX);sv("il_th",TH);sv("il_fav",FAVS);sv("il_hid",HIDDEN);sv("il_rat",RATINGS);sv("il_goals",GOALS); sv("il_nlog",NLOG);
+  sv("il_nfoods",NFOODS);
+  sv("il_ngoals",NGOALS);sv("il_meas",MEAS);sv("il_achv",ACHV);sv("il_wt",WTARGETS)}
  
 var view="log",selDate=tod(),step=0,selGrp="",selEx="",sets=[{r:10,w:0}],note="",isSuper=false,selLift="",calM=new Date().getMonth(),calY=new Date().getFullYear(),wStart=null,exSearch="",showManage=false,moreTab="prs";
 var timerOn=false,timerSec=0,timerInt=null;
@@ -350,5 +356,6 @@ function bindEvents(){
 }
 render();
 });
+
 
 
