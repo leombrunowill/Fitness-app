@@ -626,9 +626,9 @@ function bindEvents(){
 var addFoodBtn = document.getElementById("add-food-btn");
 if (addFoodBtn) {
   addFoodBtn.addEventListener("click", function () {
-    var nameEl = document.getElementById("food-name");
+    var nameEl  = document.getElementById("food-name");
     var gramsEl = document.getElementById("food-grams");
-    var servEl = document.getElementById("food-serv");
+    var servEl  = document.getElementById("food-serv");
 
     var name = (nameEl && nameEl.value ? nameEl.value : "").trim();
     if (!name) return alert("Enter a food name.");
