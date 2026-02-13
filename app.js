@@ -635,6 +635,15 @@ if (addFoodBtn) {
 
     var key = foodKey(name);
     var food = NFOODS[key];
+
+// fallback: contains-match on name
+if (!food) {
+  var k2 = Object.keys(NFOODS).find(function(k){
+    return (NFOODS[k].name || "").toLowerCase().includes(name.toLowerCase());
+  });
+  if (k2) food = NFOODS[k2];
+}
+
     if (!food) return alert("Food not found. Use exact name from food list.");
 
     var grams = parseFloat(gramsEl && gramsEl.value ? gramsEl.value : "") || 0;
