@@ -56,6 +56,13 @@ var NLOG = ld("il_nlog", {});
 var NFOODS = ld("il_nfoods", {
   "chicken breast cooked": { name:"Chicken Breast (cooked)", per100:{cal:165,p:31,c:0,f:3.6}, serving:{label:"6 oz", grams:170} },
   "white rice cooked":     { name:"White Rice (cooked)",     per100:{cal:130,p:2.7,c:28.2,f:0.3}, serving:{label:"150 g", grams:150} },
+  "ground beef 90% cooked": { name:"Ground Beef 90% (cooked)", per100:{cal:217,p:26,c:0,f:12}, serving:{label:"6 oz", grams:170} },
+  "english muffin":        { name:"English Muffin",          per100:{cal:232,p:8.2,c:44.0,f:2.0}, serving:{label:"1 muffin", grams:57} },
+  "bagel plain":           { name:"Plain Bagel",             per100:{cal:250,p:9.5,c:48.9,f:1.5}, serving:{label:"1 bagel", grams:95} },
+  "canadian bacon":        { name:"Canadian Bacon",          per100:{cal:110,p:20,c:1.0,f:2.0}, serving:{label:"2 slices", grams:60} },
+  "potato baked":          { name:"Potato (baked)",          per100:{cal:93,p:2.5,c:21.2,f:0.1}, serving:{label:"200 g", grams:200} },
+  "sweet potato baked":    { name:"Sweet Potato (baked)",    per100:{cal:90,p:2.0,c:20.7,f:0.2}, serving:{label:"200 g", grams:200} },
+  "pasta cooked":          { name:"Pasta (cooked)",          per100:{cal:158,p:5.8,c:30.9,f:0.9}, serving:{label:"180 g", grams:180} },
   "egg":                   { name:"Whole Egg",               per100:{cal:143,p:13,c:1.1,f:9.5}, serving:{label:"1 large", grams:50} },
   "oats":                  { name:"Oats (dry)",              per100:{cal:389,p:16.9,c:66.3,f:6.9}, serving:{label:"40 g", grams:40} },
   "banana":                { name:"Banana",                  per100:{cal:89,p:1.1,c:23,f:0.3}, serving:{label:"1 medium", grams:118} },
@@ -70,18 +77,49 @@ function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
 
 function foodKey(name){ return (name||"").trim().toLowerCase(); }
 
+function findFoodByName(name){
+  var key = foodKey(name);
+  if(NFOODS[key]) return NFOODS[key];
+
+  var q = (name||"").trim().toLowerCase();
+  if(!q) return null;
+
+  // contains match
+  var hit = null;
+  Object.keys(NFOODS).some(function(k){
+    var n = (NFOODS[k] && NFOODS[k].name ? NFOODS[k].name : k).toLowerCase();
+    if(n.indexOf(q) !== -1){ hit = NFOODS[k]; return true; }
+    return false;
+  });
+  return hit;
+}
+
 function calcItemFromFood(food, grams, servings){
-  grams = Math.max(0, grams||0);
-  servings = Math.max(0, servings||0);
-  var g = grams>0 ? grams : (food.serving && food.serving.grams ? food.serving.grams*servings : 0);
-  if(!g && servings && food.serving && food.serving.grams) g = food.serving.grams*servings;
-  var mul = g/100;
+  if(!food) return null;
+  grams = Math.max(0, parseFloat(grams||0) || 0);
+  servings = Math.max(0, parseFloat(servings||0) || 0);
+
+  var baseG = food.g || 100;
+
+  // If neither provided, default to 1 serving
+  if(!grams && !servings){ servings = 1; }
+
+  // Convert between grams & servings
+  if(!grams && servings){ grams = servings * baseG; }
+  if(grams && !servings){ servings = grams / baseG; }
+
+  var mul = grams / baseG;
+
   return {
-    grams: g,
-    cal: r1(food.per100.cal*mul),
-    p: r1(food.per100.p*mul),
-    c: r1(food.per100.c*mul),
-    f: r1(food.per100.f*mul)
+    id: uid(),
+    name: food.name || "",
+    grams: r1(grams),
+    servings: r1(servings),
+    cal: r1((food.cal||0) * mul),
+    p: r1((food.p||0) * mul),
+    c: r1((food.c||0) * mul),
+    f: r1((food.f||0) * mul),
+    at: Date.now()
   };
 }
 
@@ -338,57 +376,75 @@ if(view==="log"){
   var wD=Object.keys(W).sort();if(wD.length>=2){h+='<div class="card"><div style="font-size:13px;font-weight:700;margin-bottom:2px">📊 Volume</div><div style="font-size:10px;color:var(--mt);margin-bottom:10px">Per session</div><canvas id="vol-ch"></canvas></div>'}
  
 } else if (view === "nutrition") {
+
   var dayData = dayNutrition(selDate);
   var totals = dayData.totals;
 
- h += '<div class="sect">🍽️ Nutrition</div>';
-// Add Food Form
-h += '<div class="card">';
-h += '<div style="font-size:13px;font-weight:700;margin-bottom:10px">➕ Log Food</div>';
-
-h += '<div class="row" style="gap:8px;margin-bottom:8px">';
-h += '<input type="text" id="food-name" class="inp" placeholder="Food name" style="flex:1">';
-h += '</div>';
-
-h += '<div class="row" style="gap:8px;margin-bottom:8px">';
-h += '<input type="number" id="food-grams" class="inp" placeholder="Grams" style="flex:1">';
-h += '<input type="number" id="food-serv" class="inp" placeholder="Servings" style="flex:1">';
-h += '</div>';
-
-h += '<button class="btn bp" id="add-food-btn" style="width:100%">Add Food</button>';
-h += '</div>';
-
-
-
   h += '<div class="sect">🍽️ Nutrition</div>';
 
+  // Add food
+  h += '<div class="card">';
+  h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Add Food</div>';
+  h += '<div class="row" style="gap:8px;flex-wrap:wrap">';
+  h += '<input class="inp" id="food-name" style="flex:1;min-width:140px" placeholder="e.g. chicken breast" />';
+  h += '<input class="inp" id="food-grams" type="number" style="width:90px" placeholder="grams" />';
+  h += '<input class="inp" id="food-serv" type="number" style="width:90px" placeholder="servings" />';
+  h += '<button class="btn bp" id="add-food-btn" style="padding:10px 14px">Add</button>';
+  h += '</div>';
+  h += '<div style="font-size:10px;color:var(--mt);margin-top:8px">';
+  h += 'Tip: leave grams/servings blank to use 1 serving.';
+  h += '</div>';
+  h += '</div>';
+
+  // Daily totals
   h += '<div class="card">';
   h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Daily Totals</div>';
-
   h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">';
-  h += '<div><div style="font-size:16px;font-weight:800">'+totals.cal+'</div><div style="font-size:10px;color:var(--mt)">Calories</div></div>';
-  h += '<div><div style="font-size:16px;font-weight:800">'+totals.p+'g</div><div style="font-size:10px;color:var(--mt)">Protein</div></div>';
-  h += '<div><div style="font-size:16px;font-weight:800">'+totals.c+'g</div><div style="font-size:10px;color:var(--mt)">Carbs</div></div>';
-  h += '<div><div style="font-size:16px;font-weight:800">'+totals.f+'g</div><div style="font-size:10px;color:var(--mt)">Fat</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">' + totals.cal + '</div><div style="font-size:10px;color:var(--mt)">Calories</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">' + totals.p + 'g</div><div style="font-size:10px;color:var(--mt)">Protein</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">' + totals.c + 'g</div><div style="font-size:10px;color:var(--mt)">Carbs</div></div>';
+  h += '<div><div style="font-size:16px;font-weight:800">' + totals.f + 'g</div><div style="font-size:10px;color:var(--mt)">Fat</div></div>';
   h += '</div>';
   h += '</div>';
 
+  // Food log
   h += '<div class="card">';
   h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Food Log</div>';
 
   if (!dayData.items.length) {
     h += '<div style="font-size:11px;color:var(--mt)">No food logged today.</div>';
   } else {
-    dayData.items.forEach(function(it){
-      h += '<div style="display:flex;justify-content:space-between;margin-bottom:6px">';
-      h += '<div style="font-size:12px;font-weight:600">'+it.name+'</div>';
-      h += '<div style="font-size:11px;color:var(--mt)">'+it.cal+' cal</div>';
+    dayData.items.forEach(function(it, i){
+      h += '<div class="row" style="justify-content:space-between;margin-bottom:6px">';
+      h += '<div>';
+      h += '<div style="font-size:12px;font-weight:600">' + it.name + '</div>';
+      h += '<div style="font-size:10px;color:var(--mt)">' + (it.grams ? (it.grams + 'g') : (it.servings ? (it.servings + ' sv') : '')) + '</div>';
+      h += '</div>';
+      h += '<div class="row" style="gap:8px;align-items:center">';
+      h += '<div style="font-size:11px;color:var(--mt)">' + it.cal + ' cal</div>';
+      h += '<button class="del food-del" data-i="' + i + '">×</button>';
+      h += '</div>';
       h += '</div>';
     });
   }
 
   h += '</div>';
- } else if (view === "more") {
+
+  // Quick add list
+  h += '<div class="card">';
+  h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">Quick Add</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+  Object.keys(NFOODS).sort().forEach(function(k){
+    var f = NFOODS[k];
+    h += '<button class="btn bs food-quick" data-k="' + k + '" style="text-align:left;padding:8px 10px">';
+    h += '<div style="font-size:12px;font-weight:700">' + f.name + '</div>';
+    h += '<div style="font-size:9px;color:var(--mt)">' + f.cal + ' cal · P' + f.p + ' C' + f.c + ' F' + f.f + ' (per sv)</div>';
+    h += '</button>';
+  });
+  h += '</div>';
+  h += '</div>';
+
+} else if (view === "more") {
   // Sub tabs
   h+='<div class="pills" style="margin-bottom:12px">';
   ["prs","achievements","tools","data"].forEach(function(t){var labels={prs:"🏆 PRs",achievements:"🏅 Achievements",tools:"🔧 Tools",data:"💾 Data"};h+='<button class="pill more-tab'+(moreTab===t?' on':'')+'" data-t="'+t+'">'+labels[t]+'</button>'});
@@ -565,114 +621,88 @@ function bindEvents(){
     render();
   });
 
-  // Nutrition
-  var foodAdd = document.getElementById("food-add");
-  if (foodAdd) {
-    foodAdd.addEventListener("click", function () {
-      var nameEl = document.getElementById("food-name");
-      var calEl = document.getElementById("food-cal");
-      var pEl = document.getElementById("food-p");
-      var cEl = document.getElementById("food-c");
-      var fEl = document.getElementById("food-f");
-      var name = (nameEl && nameEl.value ? nameEl.value : "").trim();
-      if (!name) return;
 
-      var item = {
-        name: name,
-        cal: calEl && calEl.value ? parseFloat(calEl.value) || 0 : 0,
-        p: pEl && pEl.value ? parseFloat(pEl.value) || 0 : 0,
-        c: cEl && cEl.value ? parseFloat(cEl.value) || 0 : 0,
-        f: fEl && fEl.value ? parseFloat(fEl.value) || 0 : 0
-      };
-
-      if (!NLOG[selDate]) NLOG[selDate] = [];
-      NLOG[selDate].push(item);
-
-      if (nameEl) nameEl.value = "";
-      if (calEl) calEl.value = "";
-      if (pEl) pEl.value = "";
-      if (cEl) cEl.value = "";
-      if (fEl) fEl.value = "";
-
-      saveAll();
-      render();
-    });
-  }
-
-  document.querySelectorAll(".food-del").forEach(function (btn) {
-    btn.addEventListener("click", function () {
+  // Nutrition: delete food item
+  document.querySelectorAll(".food-del").forEach(function(btn){
+    btn.addEventListener("click", function(){
       var i = parseInt(this.getAttribute("data-i"), 10);
-      if (!NLOG[selDate]) return;
       if (isNaN(i)) return;
+      if (!NLOG[selDate]) return;
       NLOG[selDate].splice(i, 1);
       saveAll();
       render();
     });
   });
 
-  document.querySelectorAll(".food-quick").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var name = this.getAttribute("data-name");
-      if (!name) return;
-      var it = calcItemFromFood(name, 1);
-      if (!it) return;
+  // Nutrition: quick add (1 serving)
+  document.querySelectorAll(".food-quick").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var k = this.getAttribute("data-k");
+      if (!k || !NFOODS[k]) return;
       if (!NLOG[selDate]) NLOG[selDate] = [];
+      var it = calcItemFromFood(NFOODS[k], 0, 1);
       NLOG[selDate].push(it);
       saveAll();
       render();
     });
   });
- // Nutrition: Add food
-var addFoodBtn = document.getElementById("add-food-btn");
-if (addFoodBtn) {
-  addFoodBtn.addEventListener("click", function () {
-    var nameEl  = document.getElementById("food-name");
-    var gramsEl = document.getElementById("food-grams");
-    var servEl  = document.getElementById("food-serv");
 
-    var name = (nameEl && nameEl.value ? nameEl.value : "").trim();
-    if (!name) return alert("Enter a food name.");
+  // Nutrition: add food from inputs
+  var addFoodBtn = document.getElementById("add-food-btn");
+  if (addFoodBtn) {
+    addFoodBtn.addEventListener("click", function () {
+      var nameEl  = document.getElementById("food-name");
+      var gramsEl = document.getElementById("food-grams");
+      var servEl  = document.getElementById("food-serv");
 
-    var key = foodKey(name);
-    var food = NFOODS[key];
+      var name = (nameEl && nameEl.value ? nameEl.value : "").trim();
+      if (!name) return alert("Enter a food name.");
 
-// fallback: contains-match on name
-if (!food) {
-  var k2 = Object.keys(NFOODS).find(function(k){
-    return (NFOODS[k].name || "").toLowerCase().includes(name.toLowerCase());
-  });
-  if (k2) food = NFOODS[k2];
-}
+      // Exact key match, then contains-match on name
+      var food = findFoodByName(name);
+    if (!food) {
+      // show a few suggestions to help you pick the exact saved name
+      var sug = [];
+      var q = name.toLowerCase();
+      Object.keys(NFOODS).forEach(function(k){
+        var n = (NFOODS[k] && NFOODS[k].name ? NFOODS[k].name : k);
+        if(n.toLowerCase().indexOf(q) !== -1) sug.push(n);
+      });
+      if (sug.length) return alert('Food not found. Did you mean: ' + sug.slice(0,6).join(', ') + '?');
+      return alert('Food not found. Add it in the Foods list first (Nutrition → Foods).');
+    }
 
-    if (!food) return alert("Food not found. Use exact name from food list.");
+      var grams = parseFloat(gramsEl && gramsEl.value ? gramsEl.value : "") || 0;
+      var servings = parseFloat(servEl && servEl.value ? servEl.value : "") || 0;
+      if (!grams && !servings) servings = 1; // default
 
-    var grams = parseFloat(gramsEl && gramsEl.value ? gramsEl.value : "") || 0;
-    var servings = parseFloat(servEl && servEl.value ? servEl.value : "") || 0;
+      var it = calcItemFromFood(food, grams, servings);
 
-    var calc = calcItemFromFood(food, grams, servings);
+      if (!NLOG[selDate]) NLOG[selDate] = [];
+      NLOG[selDate].push(it);
 
-    if (!NLOG[selDate]) NLOG[selDate] = [];
-    NLOG[selDate].push({
-      id: uid(),
-      name: food.name,
-      grams: calc.grams,
-      servings: servings,
-      cal: calc.cal,
-      p: calc.p,
-      c: calc.c,
-      f: calc.f,
-      at: Date.now()
+      // clear inputs
+      if (nameEl) nameEl.value = "";
+      if (gramsEl) gramsEl.value = "";
+      if (servEl) servEl.value = "";
+
+      saveAll();
+      render();
     });
+  }
 
-    saveAll();
-    render();
-  });
-}
 } // end bindEvents
 
 render();
 }); // end DOMContentLoaded
  
+
+
+
+
+
+
+
 
 
 
