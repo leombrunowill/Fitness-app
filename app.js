@@ -67,8 +67,26 @@ var NFOODS = ld("il_nfoods", {
   "oats":                  { name:"Oats (dry)",              per100:{cal:389,p:16.9,c:66.3,f:6.9}, serving:{label:"40 g", grams:40} },
   "banana":                { name:"Banana",                  per100:{cal:89,p:1.1,c:23,f:0.3}, serving:{label:"1 medium", grams:118} },
   "olive oil":             { name:"Olive Oil",               per100:{cal:884,p:0,c:0,f:100}, serving:{label:"1 tbsp", grams:13.5} },
-  "greek yogurt nonfat":   { name:"Greek Yogurt (nonfat)",   per100:{cal:59,p:10.3,c:3.6,f:0.4}, serving:{label:"170 g cup", grams:170} }
+  "greek yogurt nonfat":   { name:"Greek Yogurt (nonfat)",   per100:{cal:59,p:10.3,c:3.6,f:0.4}, serving:{label:"170 g cup", grams:170} },
+  "blueberry granola": { name:"Blueberry Granola", per100:{cal:471,p:10,c:64,f:20}, serving:{label:"55 g (1/2 cup)", grams:55} },
+
 });
+// Normalize foods so the UI can show per-serving macros even when a food is defined per-100g.
+(function normalizeFoods(){
+  Object.keys(NFOODS || {}).forEach(function(k){
+    var f = NFOODS[k];
+    if(!f) return;
+    if(f.per100 && !f.g){
+      var sg = (f.serving && f.serving.grams) ? f.serving.grams : 100;
+      f.g = sg;
+      f.cal = Math.round((f.per100.cal||0) * sg / 100);
+      f.p   = Math.round(((f.per100.p||0) * sg / 100)*10)/10;
+      f.c   = Math.round(((f.per100.c||0) * sg / 100)*10)/10;
+      f.f   = Math.round(((f.per100.f||0) * sg / 100)*10)/10;
+    }
+  });
+})();
+
 var NGOALS = ld("il_ngoals", { cal: 2200, p: 175, c: 220, f: 65 });
 
 function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
@@ -95,33 +113,62 @@ function findFoodByName(name){
 }
 
 function calcItemFromFood(food, grams, servings){
+  // Supports two formats:
+  // A) "flat" foods: {name, g, cal, p, c, f} where macros are for 'g' grams
+  // B) per-100g foods: {name, per100:{cal,p,c,f}, serving:{grams,label}}
   if(!food) return null;
-  grams = Math.max(0, parseFloat(grams||0) || 0);
-  servings = Math.max(0, parseFloat(servings||0) || 0);
 
-  var baseG = food.g || 100;
+  var name = food.name || "Food";
 
-  // If neither provided, default to 1 serving
-  if(!grams && !servings){ servings = 1; }
+  // Determine grams / servings (allow blanks)
+  var g = (typeof grams === "number" ? grams : parseFloat(grams || 0)) || 0;
+  var s = (typeof servings === "number" ? servings : parseFloat(servings || 0)) || 0;
 
-  // Convert between grams & servings
-  if(!grams && servings){ grams = servings * baseG; }
-  if(grams && !servings){ servings = grams / baseG; }
+  // If servings provided but grams not, convert using serving grams
+  if(g <= 0 && s > 0){
+    if(food.serving && food.serving.grams) g = s * food.serving.grams;
+    else if(food.g) g = s * food.g;
+  }
 
-  var mul = grams / baseG;
+  // If still none, default to 1 serving
+  if(g <= 0){
+    if(food.serving && food.serving.grams){ g = food.serving.grams; if(!s) s = 1; }
+    else if(food.g){ g = food.g; if(!s) s = 1; }
+    else { g = 100; if(!s) s = 1; }
+  }
+
+  var cal=0,p=0,c=0,f=0;
+
+  if(food.per100){
+    var mul = g / 100;
+    cal = (food.per100.cal || 0) * mul;
+    p   = (food.per100.p   || 0) * mul;
+    c   = (food.per100.c   || 0) * mul;
+    f   = (food.per100.f   || 0) * mul;
+  } else {
+    var baseG = food.g || 100;
+    var mul2  = g / baseG;
+    cal = (food.cal || 0) * mul2;
+    p   = (food.p   || 0) * mul2;
+    c   = (food.c   || 0) * mul2;
+    f   = (food.f   || 0) * mul2;
+  }
+
+  function r1(x){ return Math.round(x*10)/10; }
 
   return {
     id: uid(),
-    name: food.name || "",
-    grams: r1(grams),
-    servings: r1(servings),
-    cal: r1((food.cal||0) * mul),
-    p: r1((food.p||0) * mul),
-    c: r1((food.c||0) * mul),
-    f: r1((food.f||0) * mul),
+    name: name,
+    grams: Math.round(g),
+    servings: r1(s || (food.serving && food.serving.grams ? g / food.serving.grams : 1)),
+    cal: Math.round(cal),
+    p: r1(p),
+    c: r1(c),
+    f: r1(f),
     at: Date.now()
   };
 }
+
 
 function dayNutrition(date){
   var items = NLOG[date] || [];
@@ -696,13 +743,6 @@ function bindEvents(){
 render();
 }); // end DOMContentLoaded
  
-
-
-
-
-
-
-
 
 
 
