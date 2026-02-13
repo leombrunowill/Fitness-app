@@ -628,17 +628,17 @@ if (addFoodBtn) {
   addFoodBtn.addEventListener("click", function () {
     var nameEl = document.getElementById("food-name");
     var gramsEl = document.getElementById("food-grams");
-    var servEl  = document.getElementById("food-serv");
+    var servEl = document.getElementById("food-serv");
 
-    var name = (nameEl.value || "").trim();
+    var name = (nameEl && nameEl.value ? nameEl.value : "").trim();
     if (!name) return alert("Enter a food name.");
 
     var key = foodKey(name);
     var food = NFOODS[key];
     if (!food) return alert("Food not found. Use exact name from food list.");
 
-    var grams = parseFloat(gramsEl.value) || 0;
-    var servings = parseFloat(servEl.value) || 0;
+    var grams = parseFloat(gramsEl && gramsEl.value ? gramsEl.value : "") || 0;
+    var servings = parseFloat(servEl && servEl.value ? servEl.value : "") || 0;
 
     var calc = calcItemFromFood(food, grams, servings);
 
@@ -658,7 +658,8 @@ if (addFoodBtn) {
     saveAll();
     render();
   });
-} // end bindEvents
+}
+ // end bindEvents
 
 render();
 }); // end DOMContentLoaded
