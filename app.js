@@ -371,9 +371,6 @@ if(view==="log"){
 
   h += '</div>';
  } else if (view === "more") {
-
-
-
   // Sub tabs
   h+='<div class="pills" style="margin-bottom:12px">';
   ["prs","achievements","tools","data"].forEach(function(t){var labels={prs:"🏆 PRs",achievements:"🏅 Achievements",tools:"🔧 Tools",data:"💾 Data"};h+='<button class="pill more-tab'+(moreTab===t?' on':'')+'" data-t="'+t+'">'+labels[t]+'</button>'});
@@ -554,6 +551,7 @@ function bindEvents(){
 render();
 }); // end DOMContentLoaded
  
+
 
 
 
