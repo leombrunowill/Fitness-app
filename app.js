@@ -90,8 +90,14 @@ if (tstop) {
 }
  
 function applyTheme(){document.body.setAttribute("data-theme",TH==="light"?"light":"");document.getElementById("thm-btn").textContent=TH==="dark"?"🌙":"☀️"}
-document.getElementById("thm-btn").addEventListener("click",function(){TH=TH==="dark"?"light":"dark";applyTheme();sv("il_th",TH)});applyTheme();
-document.querySelectorAll(".nb").forEach(function(btn){btn.addEventListener("click",function(){view=this.getAttribute("data-v");document.querySelectorAll(".nb").forEach(function(b){b.classList.remove("on")});this.classList.add("on");render()})});
+var themeBtn = document.getElementById("thm-btn");
+if (themeBtn) {
+  themeBtn.addEventListener("click", function () {
+    TH = TH === "dark" ? "light" : "dark";
+    applyTheme();
+    sv("il_th", TH);
+  });
+}document.querySelectorAll(".nb").forEach(function(btn){btn.addEventListener("click",function(){view=this.getAttribute("data-v");document.querySelectorAll(".nb").forEach(function(b){b.classList.remove("on")});this.classList.add("on");render()})});
  
 function showModal(html){var el=document.getElementById("mover");el.style.display="flex";el.innerHTML='<div class="mover-bg"><div class="modal">'+html+'</div></div>';el.querySelector(".mover-bg").addEventListener("click",function(e){if(e.target===this)closeModal()})}
 function closeModal(){var el=document.getElementById("mover");el.style.display="none";el.innerHTML=""}
@@ -344,4 +350,5 @@ function bindEvents(){
 }
 render();
 });
+
 
