@@ -488,6 +488,22 @@ function bindEvents(){
       reader.readAsText(file);
     });
   }
+   // Reset
+  var rb = document.getElementById("reset-btn");
+  if (rb) rb.addEventListener("click", function () {
+    if (!confirm("Are you sure? This will delete ALL your data.")) return;
+    W = {}; BW = {}; TPL = []; PR = {}; CX = {}; FAVS = {}; HIDDEN = {}; RATINGS = {}; GOALS = {};
+    MEAS = {}; ACHV = {}; WTARGETS = {};
+    NLOG = {}; NFOODS = {}; NGOALS = {};
+    saveAll();
+    render();
+  });
+} // end bindEvents
+
+render();
+}); // end DOMContentLoaded
+ 
+
 
 
 
