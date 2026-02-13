@@ -604,6 +604,42 @@ function bindEvents(){
       render();
     });
   });
+ // Nutrition: Add food
+var addFoodBtn = document.getElementById("add-food-btn");
+if (addFoodBtn) {
+  addFoodBtn.addEventListener("click", function () {
+    var nameEl = document.getElementById("food-name");
+    var gramsEl = document.getElementById("food-grams");
+    var servEl  = document.getElementById("food-serv");
+
+    var name = (nameEl.value || "").trim();
+    if (!name) return alert("Enter a food name.");
+
+    var key = foodKey(name);
+    var food = NFOODS[key];
+    if (!food) return alert("Food not found. Use exact name from food list.");
+
+    var grams = parseFloat(gramsEl.value) || 0;
+    var servings = parseFloat(servEl.value) || 0;
+
+    var calc = calcItemFromFood(food, grams, servings);
+
+    if (!NLOG[selDate]) NLOG[selDate] = [];
+    NLOG[selDate].push({
+      id: uid(),
+      name: food.name,
+      grams: calc.grams,
+      servings: servings,
+      cal: calc.cal,
+      p: calc.p,
+      c: calc.c,
+      f: calc.f,
+      at: Date.now()
+    });
+
+    saveAll();
+    render();
+  });
 } // end bindEvents
 
 render();
