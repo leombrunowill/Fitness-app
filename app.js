@@ -236,6 +236,19 @@ function smartCalAdj(){
 }
 // also expose just in case other scopes call it
 try{ window.smartCalAdj = smartCalAdj; }catch(e){}
+function smartCalAdj(base, bw, sessions, steps) {
+  var adj = 0;
+
+  // training frequency bump
+  if (sessions >= 5) adj += 150;
+  else if (sessions >= 3) adj += 75;
+
+  // daily step adjustment
+  if (steps >= 10000) adj += 100;
+  else if (steps <= 5000) adj -= 100;
+
+  return base + adj;
+}
 
 function calcAutoGoals(){
   // Auto nutrition targets for leaning out (12–15% BF goal) w/ 5x training + ~10k steps/day.
