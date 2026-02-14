@@ -436,7 +436,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       var day = W[selDate] || [];
       h += '<div class="row" style="justify-content:space-between;margin-top:4px;align-items:center">';
-      h += '<div class="sect" style="margin:0">🏋️ Today\\'s Workout</div>';
+      h += '<div class="sect" style="margin:0">🏋️ Today\'s Workout</div>';
       h += '<button class="btn bp" id="add-ex-btn" style="padding:6px 10px;font-size:11px">➕ Add</button>';
       h += '</div><div style="height:8px"></div>';
 
