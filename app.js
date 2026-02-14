@@ -152,7 +152,22 @@ var BARCODE_MAP = ld("il_barcode_map", {}); // { "0123456789012": "chicken breas
 
 function saveMealPresets(){ sv("il_meal_presets", MEAL_PRESETS); }
 function saveBarcodeMap(){ sv("il_barcode_map", BARCODE_MAP); }
-
+   
+function findFoodKeyByName(name){
+  var q = foodKey(name || "");
+  if (!q) return "";
+  if (NFOODS[q]) return q;
+  var keys = Object.keys(NFOODS);
+  for (var i=0;i<keys.length;i++) {
+    if (foodKey(NFOODS[keys[i]].name) === q) return keys[i];
+  }
+  for (var j=0;j<keys.length;j++) {
+    var nm = String((NFOODS[keys[j]]||{}).name || "").toLowerCase();
+    if (nm.indexOf(String(name||"").toLowerCase()) >= 0) return keys[j];
+  }
+  return "";
+}
+   
 function addPresetToDay(presetId){
   var p=null;
   for(var i=0;i<MEAL_PRESETS.length;i++){ if(MEAL_PRESETS[i].id===presetId){ p=MEAL_PRESETS[i]; break; } }
@@ -494,6 +509,7 @@ function exerciseList(group){
   // Nutrition helpers
   // -----------------------------
   function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
+    function round1(x){ return Math.round((+x || 0) * 10) / 10; }
    function normSearch(v) {
     return String(v || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -564,8 +580,7 @@ function exerciseList(group){
     if (!g) return null;
 
     var per = food.per100 || {cal:0,p:0,c:0,f:0};
-    function round1(x){ return Math.round(x * 10) / 10; }
-    return {
+ return {
       grams: Math.round(g),
       servings: servings ? round1(servings) : 0,
       cal: Math.round((per.cal || 0) * g / 100),
@@ -574,7 +589,149 @@ function exerciseList(group){
       f: round1((per.f || 0) * g / 100)
     };
   }
+function calcItemFromFood(food, grams, servings) {
+    return calcItem(food, grams, servings);
+  }
 
+  function saveCustomFood(def) {
+    var name = String(def.name || "").trim();
+    var servingGrams = +def.servingGrams || 0;
+    var cal = +def.cal || 0;
+    var p = +def.p || 0;
+    var c = +def.c || 0;
+    var f = +def.f || 0;
+    if (!name) return { ok:false, msg:"Food name is required." };
+    if (!servingGrams || servingGrams <= 0) return { ok:false, msg:"Serving grams must be greater than 0." };
+    if (cal < 0 || p < 0 || c < 0 || f < 0) return { ok:false, msg:"Macros cannot be negative." };
+    var per100Factor = 100 / servingGrams;
+    var key = foodKey(name);
+    NFOODS[key] = {
+      name: name,
+      per100: {
+        cal: round1(cal * per100Factor),
+        p: round1(p * per100Factor),
+        c: round1(c * per100Factor),
+        f: round1(f * per100Factor)
+      },
+      serving: { label: Math.round(servingGrams) + " g", grams: Math.round(servingGrams) },
+      custom: true
+    };
+    return { ok:true, key:key, food:NFOODS[key] };
+  }
+
+  function openCustomFoodModal() {
+    var html = '';
+    html += '<div style="padding:14px;min-width:280px;max-width:520px">';
+    html += '<div style="font-size:16px;font-weight:900;margin-bottom:10px">🧪 Create Custom Food</div>';
+    html += '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Enter macros for one serving. This food is saved for reuse.</div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Food name</div><input class="inp" id="cf-name" placeholder="e.g., Homemade Turkey Chili"></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Serving grams</div><input class="inp" id="cf-serv-g" type="number" min="1" step="1" value="100"></div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Calories</div><input class="inp" id="cf-cal" type="number" min="0" step="1" value="0"></div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Protein (g)</div><input class="inp" id="cf-p" type="number" min="0" step="0.1" value="0"></div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Carbs (g)</div><input class="inp" id="cf-c" type="number" min="0" step="0.1" value="0"></div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Fat (g)</div><input class="inp" id="cf-f" type="number" min="0" step="0.1" value="0"></div>';
+    html += '</div>';
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px"><input type="checkbox" id="cf-add-today" checked> Add 1 serving to today after saving</label>';
+    html += '<div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">';
+    html += '<button class="btn bs" id="cf-cancel">Cancel</button>';
+    html += '<button class="btn bp" id="cf-save">Save Food</button>';
+    html += '</div></div>';
+    showModal(html);
+
+    var cancelBtn = document.getElementById("cf-cancel");
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    var saveBtn = document.getElementById("cf-save");
+    if (saveBtn) saveBtn.onclick = function(){
+      var payload = {
+        name: (document.getElementById("cf-name") || {}).value || "",
+        servingGrams: parseFloat((document.getElementById("cf-serv-g") || {}).value) || 0,
+        cal: parseFloat((document.getElementById("cf-cal") || {}).value) || 0,
+        p: parseFloat((document.getElementById("cf-p") || {}).value) || 0,
+        c: parseFloat((document.getElementById("cf-c") || {}).value) || 0,
+        f: parseFloat((document.getElementById("cf-f") || {}).value) || 0
+      };
+      var res = saveCustomFood(payload);
+      if (!res.ok) return alert(res.msg || "Could not save food.");
+
+      if ((document.getElementById("cf-add-today") || {}).checked) {
+        ensureDay(selDate);
+        var calc = calcItem(res.food, payload.servingGrams, 1);
+        if (calc) {
+          NLOG[selDate].push({
+            id: uid(),
+            name: res.food.name,
+            key: res.key,
+            grams: calc.grams,
+            servings: calc.servings,
+            cal: calc.cal,
+            p: calc.p,
+            c: calc.c,
+            f: calc.f,
+            at: Date.now()
+          });
+        }
+      }
+      saveAll();
+      closeModal();
+      render();
+    };
+  }
+
+  function openCustomMealPresetModal() {
+    var html = '';
+    html += '<div style="padding:14px;min-width:280px;max-width:560px">';
+    html += '<div style="font-size:16px;font-weight:900;margin-bottom:10px">🍱 Create Meal Preset</div>';
+    html += '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Format each line as <strong>Food Name, grams</strong> (example: Chicken Breast, 175).</div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Meal name</div><input class="inp" id="cm-name" placeholder="e.g., Post-workout meal"></div>';
+    html += '<div style="margin-top:8px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Foods</div><textarea class="txta" id="cm-lines" placeholder="White Rice, 150&#10;Chicken Breast (cooked), 175"></textarea></div>';
+    html += '<div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">';
+    html += '<button class="btn bs" id="cm-cancel">Cancel</button>';
+    html += '<button class="btn bp" id="cm-save">Save Meal</button>';
+    html += '</div></div>';
+    showModal(html);
+
+    var cmCancel = document.getElementById("cm-cancel");
+    if (cmCancel) cmCancel.onclick = closeModal;
+    var cmSave = document.getElementById("cm-save");
+    if (cmSave) cmSave.onclick = function(){
+      var name = String((document.getElementById("cm-name") || {}).value || "").trim();
+      var linesRaw = String((document.getElementById("cm-lines") || {}).value || "").trim();
+      if (!name) return alert("Enter a meal name.");
+      if (!linesRaw) return alert("Add at least one food line.");
+
+      var lines = linesRaw.split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean);
+      var items = [];
+      var misses = [];
+      lines.forEach(function(line){
+        var parts = line.split(",");
+        var foodName = (parts[0] || "").trim();
+        var grams = parseFloat((parts[1] || "").trim()) || 0;
+        if (!foodName || grams <= 0) {
+          misses.push(line);
+          return;
+        }
+        var key = findFoodKeyByName(foodName);
+        if (!key || !NFOODS[key]) {
+          misses.push(line);
+          return;
+        }
+        items.push({ key:key, grams:Math.round(grams), servings:0 });
+      });
+
+      if (!items.length) return alert("Could not parse foods. Use: Food Name, grams");
+      if (misses.length) {
+        var msg = "Some lines could not be matched:\n- " + misses.slice(0,4).join("\n- ");
+        if (!confirm(msg + "\n\nSave the meal with matched foods only?")) return;
+      }
+
+      MEAL_PRESETS.unshift({ id:"m_"+Date.now(), name:name, items:items });
+      saveMealPresets();
+      closeModal();
+      render();
+    };
+  }
+   
   function dayNutrition(ds) {
     ensureDay(ds);
     var items = NLOG[ds] || [];
@@ -1080,7 +1237,7 @@ h += '<div class="card">';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Servings</div><input class="inp" type="number" id="food-serv" placeholder="x" step="0.5"></div>';
       h += '</div>';
       h += '<div class="row" style="gap:8px;margin-top:10px"><button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button><button class="btn bs bf" id="scan-food-btn" style="width:120px">📷 Scan</button></div>';
-
+  h += '<div class="row" style="gap:8px;margin-top:8px"><button class="btn bs bf" id="open-custom-food-btn" style="flex:1">🧪 Custom food + macros</button></div>';
       h += '<datalist id="foodlist">';
       Object.keys(NFOODS).sort().forEach(function(k){
         h += '<option value="'+esc(NFOODS[k].name)+'"></option>';
@@ -1107,9 +1264,12 @@ h += '<div class="card">';
       h += '<div class="card">';
       h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
       h += '<div style="font-size:13px;font-weight:800">🍱 Meal Presets</div>';
-      h += '<button class="btn bs" id="save-preset-btn" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
+       h += '<div class="row" style="gap:6px">';
+      h += '<button class="btn bs" id="open-custom-meal-btn" style="padding:6px 10px;font-size:11px">➕ New meal</button>';
+       h += '<button class="btn bs" id="save-preset-btn" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
       h += '</div>';
-      if (!MEAL_PRESETS.length) {
+       h += '</div>';
+       if (!MEAL_PRESETS.length) {
         h += '<div style="font-size:11px;color:var(--mt)">No presets yet.</div>';
       } else {
         MEAL_PRESETS.forEach(function(p){
@@ -1462,7 +1622,11 @@ var foodSearchEl = document.getElementById("food-search");
     // Barcode scan (optional)
     var scanBtn = document.getElementById("scan-food-btn");
     if (scanBtn) scanBtn.addEventListener("click", scanFoodBarcode);
-
+ var customFoodBtn = document.getElementById("open-custom-food-btn");
+    if (customFoodBtn) customFoodBtn.addEventListener("click", openCustomFoodModal);
+    var customMealBtn = document.getElementById("open-custom-meal-btn");
+    if (customMealBtn) customMealBtn.addEventListener("click", openCustomMealPresetModal);
+     
     document.querySelectorAll(".food-quick").forEach(function(btn){
       btn.onclick = function(){
         var nm = this.getAttribute("data-name");
