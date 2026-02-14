@@ -153,6 +153,24 @@ var BARCODE_MAP = ld("il_barcode_map", {}); // { "0123456789012": "chicken breas
 function saveMealPresets(){ sv("il_meal_presets", MEAL_PRESETS); }
 function saveBarcodeMap(){ sv("il_barcode_map", BARCODE_MAP); }
 
+
+  function sanitizeNutritionState() {
+    if (!NFOODS || typeof NFOODS !== "object" || Array.isArray(NFOODS)) NFOODS = {};
+    if (!Array.isArray(MEAL_PRESETS)) MEAL_PRESETS = [];
+    MEAL_PRESETS = MEAL_PRESETS.filter(function(p){
+      return p && typeof p === "object" && typeof p.name === "string" && Array.isArray(p.items);
+    }).map(function(p){
+      var id = String(p.id || ("m_" + Date.now() + "_" + Math.random().toString(16).slice(2)));
+      var name = String(p.name || "Custom meal").trim() || "Custom meal";
+      var items = p.items.filter(function(it){
+        return it && NFOODS[it.key] && (+it.grams > 0 || +it.servings > 0);
+      }).map(function(it){
+        return { key: it.key, grams: Math.max(0, Math.round(+it.grams || 0)), servings: Math.max(0, round1(+it.servings || 0)) };
+      });
+      return { id:id, name:name, items:items };
+    });
+  }
+
 function findFoodKeyByName(name){
   var q = foodKey(name || "");
   if (!q) return "";
@@ -487,8 +505,8 @@ function exerciseList(group){
     };
   }
   function ensureDay(ds) {
-    if (!W[ds]) W[ds] = [];
-    if (!NLOG[ds]) NLOG[ds] = [];
+    if (!Array.isArray(W[ds])) W[ds] = [];
+    if (!Array.isArray(NLOG[ds])) NLOG[ds] = [];
   }
 
   function updatePRFromEntry(ds, exEntry) {
@@ -1275,8 +1293,8 @@ h += '<div class="card">';
       } else {
         MEAL_PRESETS.forEach(function(p){
           h += '<div class="row" style="justify-content:space-between;gap:8px;margin-bottom:6px">';
-          h += '<button class="btn bp preset-add" data-id="'+p.id+'" style="flex:1;padding:8px 10px;font-size:12px;text-align:left">➕ '+p.name+'</button>';
-          h += '<button class="del preset-del" data-id="'+p.id+'" title="Delete">×</button>';
+          h += '<button class="btn bp preset-add" data-id="'+esc(p.id)+'" style="flex:1;padding:8px 10px;font-size:12px;text-align:left">➕ '+esc(p.name)+'</button>';
+          h += '<button class="del preset-del" data-id="'+esc(p.id)+'" title="Delete">×</button>';
           h += '</div>';
         });
       }
@@ -1739,6 +1757,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
           if (data.NLOG) NLOG = data.NLOG;
           if (data.NFOODS) NFOODS = data.NFOODS;
           if (data.USER) USER = data.USER;
+          sanitizeNutritionState();
           if (data.TH) TH = data.TH;
           saveAll();
           alert("Imported!");
@@ -1755,6 +1774,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
       W = {}; BW = {}; PR = {}; NLOG = {};
+      sanitizeNutritionState();
       saveAll();
       render();
     };
@@ -1765,6 +1785,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
   });
 
   applyTheme();
+  sanitizeNutritionState();
   saveAll();
   render();
 });
