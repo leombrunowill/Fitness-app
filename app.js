@@ -165,6 +165,74 @@ function avgWorkoutsPerWeek(days){
   return (cnt / (days/7));
 }
 
+
+// --- Smart calorie auto-adjust ---
+// Looks at ~14 days of bodyweight trend (if available) and nudges calories weekly.
+// Returns a small adjustment in calories/day (e.g., -100, +100), or 0 if no action.
+function _iso(d){ return d.toISOString().split("T")[0]; }
+function _dFromISO(s){ return new Date(s+"T12:00:00"); }
+function _addDaysISO(iso,days){ var d=_dFromISO(iso); d.setDate(d.getDate()+days); return _iso(d); }
+
+function _avgBWInRange(endISO, daysBack){
+  // average BW over [end-daysBack+1, end], using BW object; returns null if <3 points
+  var sum=0, n=0;
+  for(var i=0;i<daysBack;i++){
+    var ds=_addDaysISO(endISO,-i);
+    var v=BW[ds];
+    if(v){ sum+=Number(v); n++; }
+  }
+  if(n<3) return null;
+  return sum/n;
+}
+
+function _strengthTrendOK(endISO){
+  // Very lightweight proxy: if we have a PR in the last 14 days, assume strength is holding.
+  // If no PR info exists, return true (don't overreact).
+  try{
+    var since=_dFromISO(_addDaysISO(endISO,-14)).getTime();
+    var keys=Object.keys(PR||{});
+    for(var i=0;i<keys.length;i++){
+      var pr=PR[keys[i]];
+      if(pr && pr.date){
+        var t=_dFromISO(pr.date).getTime();
+        if(t>=since) return true;
+      }
+    }
+    return keys.length?false:true;
+  }catch(e){ return true; }
+}
+
+function smartCalAdj(todayISO){
+  // only run once per 7 days
+  var last = NSET.lastAdjCheck;
+  if(last){
+    var dt = (_dFromISO(todayISO).getTime() - _dFromISO(last).getTime())/86400000;
+    if(dt < 7) return 0;
+  }
+
+  // Compare last 7-day avg BW vs previous 7-day avg BW
+  var a7 = _avgBWInRange(todayISO, 7);
+  var prevEnd = _addDaysISO(todayISO,-7);
+  var p7 = _avgBWInRange(prevEnd, 7);
+  if(a7==null || p7==null) return 0;
+
+  var diff = a7 - p7; // lbs over ~1 week
+  // For leaning out, aim roughly -0.5 to -1.0 lb/week (adjustable via NSET.cutRate)
+  var targetLoss = Number(NSET.cutRate)||0.75; // lb/week
+  var tooFast = diff < -1.25*targetLoss;
+  var tooSlowOrGain = diff > -0.25*targetLoss; // flat or gaining
+
+  var strengthOK = _strengthTrendOK(todayISO);
+
+  // If losing too fast OR strength seems to be stalling, add calories a bit
+  if(tooFast || !strengthOK) return +100;
+
+  // If not losing (or gaining), reduce a bit
+  if(tooSlowOrGain) return -100;
+
+  return 0;
+}
+
 function calcAutoGoals(){
   // Auto nutrition targets for leaning out (12–15% BF goal) w/ 5x training + ~10k steps/day.
   // Uses: latest bodyweight, workout frequency, optional weekly smart adjustment (calAdj).
