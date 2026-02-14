@@ -369,6 +369,7 @@ function openBarcodeScanner(){
   var selDate = ld("il_selDate", tod());
 
   var W = ld("il_w", {});         // workouts by date
+  var CEX = ld("il_custom_ex", {}); // custom exercises by group
   var BW = ld("il_bw", {});       // bodyweight by date: number
   var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
   var NLOG = ld("il_nlog", {});   // nutrition log by date
@@ -387,6 +388,7 @@ function openBarcodeScanner(){
     sv("il_view", view);
     sv("il_selDate", selDate);
     sv("il_w", W);
+    sv("il_custom_ex", CEX);
     sv("il_bw", BW);
     sv("il_pr", PR);
     sv("il_nlog", NLOG);
@@ -411,6 +413,20 @@ function openBarcodeScanner(){
     w = +w || 0; r = +r || 0;
     if (w <= 0 || r <= 0) return 0;
     return Math.round(w * (1 + r / 30));
+  }
+
+  function exerciseList(group){
+    var base = EX[group] || [];
+    var custom = CEX[group] || [];
+    var seen = {};
+    return base.concat(custom).filter(function(name){
+      var k = String(name || "").trim();
+      if(!k) return false;
+      var id = k.toLowerCase();
+      if(seen[id]) return false;
+      seen[id] = true;
+      return true;
+    });
   }
 
 
@@ -868,6 +884,16 @@ function openBarcodeScanner(){
           h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(function(s){ return (s.r||0)+'×'+((+s.w||0)>0? s.w+' lb':'BW'); }).join(" · ")+'</div></div>';
           h += '<button class="del" data-act="rm-ex" data-i="'+idx+'">×</button>';
           h += '</div>';
+          h += '<div style="margin-top:8px;display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center">';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">Set</div>';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">Reps</div>';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">Weight (lb)</div>';
+          (ex.sets || []).forEach(function(st, sIdx){
+            h += '<div style="font-size:11px;color:var(--mt)">#'+(sIdx+1)+'</div>';
+            h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px">';
+            h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="2.5" value="'+(+st.w||0)+'" style="padding:6px 8px">';
+          });
+          h += '</div>';
           if (ex.note) h += '<div style="margin-top:8px;font-size:11px;color:var(--mt);font-style:italic">📝 '+esc(ex.note)+'</div>';
           h += '</div>';
         });
@@ -1113,6 +1139,10 @@ function openBarcodeScanner(){
     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Exercise</div>';
     html += '<select class="inp" id="ae-ex"></select></div>';
     html += '</div>';
+    html += '<div class="row" style="gap:8px;margin-top:8px">';
+    html += '<input class="inp" id="ae-custom" placeholder="Or add custom workout" style="flex:1">';
+    html += '<button class="btn bs" id="ae-custom-add" style="padding:8px 10px">Save</button>';
+    html += '</div>';
 
     html += '<div style="height:10px"></div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
@@ -1154,7 +1184,7 @@ function openBarcodeScanner(){
     function fillExercises(group) {
       var exSel = document.getElementById("ae-ex");
       if (!exSel) return;
-      var list = EX[group] || [];
+      var list = exerciseList(group);
       exSel.innerHTML = list.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join("");
     }
 
@@ -1162,8 +1192,27 @@ function openBarcodeScanner(){
     if (gSel) {
       fillExercises(gSel.value);
     updateHint();
-      gSel.addEventListener("change", function(){ fillExercises(this.value); });
+      gSel.addEventListener("change", function(){ fillExercises(this.value); updateHint(); });
     }
+
+    var customAdd = document.getElementById("ae-custom-add");
+    if (customAdd) customAdd.addEventListener("click", function(){
+      var grp = (document.getElementById("ae-group") || {}).value || "Chest";
+      var customName = ((document.getElementById("ae-custom") || {}).value || "").trim();
+      if (!customName) return;
+      if (!CEX[grp]) CEX[grp] = [];
+      var exists = exerciseList(grp).some(function(n){ return n.toLowerCase() === customName.toLowerCase(); });
+      if (!exists) CEX[grp].push(customName);
+      fillExercises(grp);
+      var exSel = document.getElementById("ae-ex");
+      if (exSel) exSel.value = customName;
+      document.getElementById("ae-custom").value = "";
+      saveAll();
+      updateHint();
+    });
+
+    var exSel = document.getElementById("ae-ex");
+    if (exSel) exSel.addEventListener("change", updateHint);
 
     var cancel = document.getElementById("ae-cancel");
     if (cancel) cancel.addEventListener("click", closeModal);
@@ -1237,6 +1286,23 @@ function openBarcodeScanner(){
         if (isNaN(i)) return;
         if (!W[selDate]) return;
         W[selDate].splice(i, 1);
+        saveAll();
+        render();
+      };
+    });
+
+    document.querySelectorAll('[data-act="set-reps"], [data-act="set-weight"]').forEach(function(inp){
+      inp.onchange = function(){
+        var exIdx = parseInt(this.getAttribute("data-i"), 10);
+        var setIdx = parseInt(this.getAttribute("data-s"), 10);
+        if (isNaN(exIdx) || isNaN(setIdx)) return;
+        var day = W[selDate] || [];
+        var ex = day[exIdx];
+        if (!ex || !ex.sets || !ex.sets[setIdx]) return;
+        var v = parseFloat(this.value) || 0;
+        if (this.getAttribute("data-act") === "set-reps") ex.sets[setIdx].r = Math.max(0, Math.round(v));
+        else ex.sets[setIdx].w = Math.max(0, Math.round(v * 10) / 10);
+        updatePRFromEntry(selDate, ex);
         saveAll();
         render();
       };
