@@ -202,36 +202,40 @@ function _strengthTrendOK(endISO){
   }catch(e){ return true; }
 }
 
-function smartCalAdj(todayISO){
-  // only run once per 7 days
-  var last = NSET.lastAdjCheck;
-  if(last){
-    var dt = (_dFromISO(todayISO).getTime() - _dFromISO(last).getTime())/86400000;
-    if(dt < 7) return 0;
-  }
 
-  // Compare last 7-day avg BW vs previous 7-day avg BW
-  var a7 = _avgBWInRange(todayISO, 7);
-  var prevEnd = _addDaysISO(todayISO,-7);
-  var p7 = _avgBWInRange(prevEnd, 7);
-  if(a7==null || p7==null) return 0;
+function smartCalAdj(){
+  // Adaptive calorie adjustment based on 14-day weight trend.
+  // Returns an integer calorie delta to apply to the base target.
+  try{
+    var days = Object.keys(BW||{}).sort();
+    if(days.length < 8) return 0; // not enough data
+    // keep last 14 entries with weights
+    var last = [];
+    for(var i=days.length-1;i>=0 && last.length<14;i--){
+      var d = days[i];
+      var w = parseFloat(BW[d]);
+      if(!isNaN(w) && w>0) last.unshift({d:d,w:w});
+    }
+    if(last.length < 8) return 0;
 
-  var diff = a7 - p7; // lbs over ~1 week
-  // For leaning out, aim roughly -0.5 to -1.0 lb/week (adjustable via NSET.cutRate)
-  var targetLoss = Number(NSET.cutRate)||0.75; // lb/week
-  var tooFast = diff < -1.25*targetLoss;
-  var tooSlowOrGain = diff > -0.25*targetLoss; // flat or gaining
+    var w0 = last[0].w, w1 = last[last.length-1].w;
+    var delta = w1 - w0; // lbs over window
+    // For leaning out goal: aim for ~0.25%–0.75% BW loss per week.
+    var cur = w1;
+    if(!cur || cur<=0) return 0;
+    var weeks = Math.max(1, (last.length-1)/7);
+    var ratePct = (delta/cur)/weeks; // negative means losing
 
-  var strengthOK = _strengthTrendOK(todayISO);
-
-  // If losing too fast OR strength seems to be stalling, add calories a bit
-  if(tooFast || !strengthOK) return +100;
-
-  // If not losing (or gaining), reduce a bit
-  if(tooSlowOrGain) return -100;
-
-  return 0;
+    // If losing too fast -> add calories; if not losing -> reduce.
+    if(ratePct < -0.01) return 250;      // >1%/wk loss, too aggressive
+    if(ratePct < -0.0075) return 150;    // 0.75–1%/wk
+    if(ratePct < -0.0025) return 0;      // 0.25–0.75%/wk (sweet spot)
+    if(ratePct < 0.0025) return -150;    // flat / slight gain
+    return -250;                         // gaining
+  }catch(e){ return 0; }
 }
+// also expose just in case other scopes call it
+try{ window.smartCalAdj = smartCalAdj; }catch(e){}
 
 function calcAutoGoals(){
   // Auto nutrition targets for leaning out (12–15% BF goal) w/ 5x training + ~10k steps/day.
