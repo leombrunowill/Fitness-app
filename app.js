@@ -116,12 +116,13 @@ document.addEventListener("DOMContentLoaded", function () {
   var BW = ld("il_bw", {});       // bodyweight by date: number
   var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
   var NLOG = ld("il_nlog", {});   // nutrition log by date
+  var NUPC = ld("il_nupc", {});   // barcode -> foodKey mapping
 
   // activity assumptions (used for calorie targets)
   var USER = ld("il_user", {
     sessionsPerWeek: 5,
     stepsPerDay: 10000,
-    cutAggressiveness: "moderate", // "mild" | "moderate" | "aggressive"
+    cutAggressiveness: "performance", // "performance" | "moderate" | "aggressive"
     autoGoals: true
   });
 
@@ -134,6 +135,7 @@ document.addEventListener("DOMContentLoaded", function () {
     sv("il_pr", PR);
     sv("il_nlog", NLOG);
     sv("il_nfoods", NFOODS);
+    sv("il_nupc", NUPC);
     sv("il_user", USER);
   }
 
@@ -261,42 +263,40 @@ document.addEventListener("DOMContentLoaded", function () {
     return { start: startKey, end: end, delta: (bw1 - bw0) };
   }
 
-  function calcAutoGoals(){
-    // Performance-first cut by default (strength prioritized, slower fat loss)
-    // Uses latest logged bodyweight; falls back to 180 if none.
-    var bw = latestBodyweight() || 180;
+  function calcAutoGoals() {
+    var bw = latestBodyweight();
+    if (!bw) return { cal: 2400, p: 180, c: 260, f: 70, note: "Log bodyweight for personalized targets." };
 
-    // Goal mode: "performance" | "moderate" | "aggressive" | "maintenance"
-    var mode = USER.goalMode || (USER.cutAggressiveness ? (USER.cutAggressiveness==="high"?"aggressive":USER.cutAggressiveness==="low"?"performance":"moderate") : "performance");
+    var maint = bw * 15;
 
-    // Training/steps assumptions: 5 lifting days + ~10k steps/day (can be tuned later)
-    // Calories are a simple heuristic; auto-adjustment below (weekly) dials it in.
-    var maintenance = Math.round(bw * 14.5);
+    var def = USER.cutAggressiveness === "aggressive" ? 600
+            : USER.cutAggressiveness === "moderate" ? 400
+            : USER.cutAggressiveness === "performance" ? 250
+            : 250; // performance-first
 
-    var deficit;
-    if(mode==="maintenance") deficit = 0;
-    else if(mode==="aggressive") deficit = Math.round(maintenance * 0.20);      // ~20%
-    else if(mode==="moderate")  deficit = Math.round(maintenance * 0.13);      // ~13%
-    else deficit = Math.round(maintenance * 0.10);                             // performance ~10%
+    var actAdj = 0;
+    if ((USER.sessionsPerWeek || 0) >= 5) actAdj += 150;
+    else if ((USER.sessionsPerWeek || 0) >= 3) actAdj += 75;
+    if ((USER.stepsPerDay || 0) >= 10000) actAdj += 100;
+    else if ((USER.stepsPerDay || 0) <= 5000) actAdj -= 100;
 
-    // Clamp deficit so it doesn't get silly at extremes
-    deficit = clamp(deficit, 0, 650);
+    var targetCal = Math.round(maint + actAdj - def);
 
-    var cals = Math.round(maintenance - deficit);
+    var tr = bwTrend14();
+    if (tr) {
+      var perWeek = (tr.delta / 2);
+      var pctPerWeek = (perWeek / bw) * 100;
+      if (pctPerWeek <= -1.0) targetCal += 150;
+      if (pctPerWeek >= -0.1) targetCal -= 150;
+    }
 
-    // Protein: higher on performance cut
-    var pPerLb = (mode==="aggressive") ? 0.95 : (mode==="moderate") ? 1.0 : (mode==="maintenance") ? 0.85 : 1.05;
-    var protein = Math.round(bw * pPerLb);
+    var p = Math.round(bw * 0.9);
+    var f = Math.round(bw * 0.3);
+    var calFromPF = p * 4 + f * 9;
+    var c = Math.max(0, Math.round((targetCal - calFromPF) / 4));
 
-    // Fat: keep hormones/performance ok
-    var fPerLb = (mode==="aggressive") ? 0.30 : (mode==="moderate") ? 0.33 : (mode==="maintenance") ? 0.35 : 0.35;
-    var fat = Math.round(bw * fPerLb);
-
-    // Carbs: remainder
-    var carbs = Math.max(0, Math.round((cals - protein*4 - fat*9) / 4));
-
-    return { cal:cals, p:protein, c:carbs, f:fat, bw:bw, maintenance:maintenance, mode:mode };
-}
+    return { cal: targetCal, p: p, c: c, f: f, note: "Auto-targets update from 14-day weight trend + activity." };
+  }
 
   // -----------------------------
   // Charts
@@ -400,136 +400,113 @@ document.addEventListener("DOMContentLoaded", function () {
     el.innerHTML = "";
   }
 
-
-  // -----------------------------
-  // Barcode scanning (optional)
-  // Uses BarcodeDetector + OpenFoodFacts (no account required).
-  var _scanStream = null;
-  var _scanStop = false;
-
-  function stopBarcodeScan(){
-    _scanStop = true;
-    try{
-      if(_scanStream){
-        _scanStream.getTracks().forEach(function(t){ try{t.stop();}catch(e){} });
-      }
-    }catch(e){}
-    _scanStream = null;
-  }
-
-  function openBarcodeScan(){
-    if(!("BarcodeDetector" in window)){
-      alert("Barcode scanning isn't supported in this browser. Use Chrome/Edge on mobile or desktop.");
+  // Barcode scanning (Safari-safe, graceful fallback)
+  function scanFoodBarcode() {
+    // Requires HTTPS + user gesture
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return alert("Camera not available in this browser.");
+    }
+    if (typeof BarcodeDetector === "undefined") {
+      alert("Barcode scanning isn\'t supported on this Safari version. You can still search & add foods manually.");
       return;
     }
-    _scanStop = false;
 
     showModal(
-      '<div style="padding:14px;max-width:520px">'+
-        '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div style="padding:12px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
           '<div style="font-size:14px;font-weight:800">📷 Scan Barcode</div>'+
-          '<button class="btn bs" id="scan-close" style="padding:6px 10px">Close</button>'+
+          '<button class="del" id="scan-x">×</button>'+
         '</div>'+
-        '<div style="font-size:11px;color:var(--mt);margin-bottom:10px;line-height:1.35">Point your camera at a food barcode. We’ll pull nutrition from OpenFoodFacts and add it to today’s log (100g default).</div>'+
-        '<video id="scan-video" playsinline style="width:100%;border-radius:14px;background:#000"></video>'+
-        '<div id="scan-status" style="margin-top:10px;font-size:11px;color:var(--mt)">Starting camera…</div>'+
+        '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Point your camera at a barcode. If it matches a saved item, it will be added. Otherwise you can link it.</div>'+
+        '<video id="scan-vid" autoplay playsinline style="width:100%;border-radius:12px;background:#000;max-height:240px"></video>'+
+        '<div id="scan-msg" style="margin-top:10px;font-size:11px;color:var(--mt)">Starting camera…</div>'+
+        '<div id="scan-link" style="display:none;margin-top:12px"></div>'+
       '</div>'
     );
 
-    var closeBtn = document.getElementById("scan-close");
-    if(closeBtn) closeBtn.onclick = function(){ stopBarcodeScan(); closeModal(); };
+    var stop = function(stream) {
+      if (!stream) return;
+      try { stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+    };
 
-    var video = document.getElementById("scan-video");
-    var status = document.getElementById("scan-status");
-    if(!video){ return; }
+    var streamRef = null;
+    var detector = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","qr_code"] });
+    var vid = document.getElementById("scan-vid");
+    var msg = document.getElementById("scan-msg");
+    var link = document.getElementById("scan-link");
+    var close = function(){ stop(streamRef); closeModal(); };
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio:false })
+    var x = document.getElementById("scan-x");
+    if (x) x.addEventListener("click", close);
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
       .then(function(stream){
-        _scanStream = stream;
-        video.srcObject = stream;
-        return video.play();
-      })
-      .then(function(){
-        var detector = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e"] });
-        if(status) status.textContent = "Scanning…";
-        (function loop(){
-          if(_scanStop) return;
-          detector.detect(video).then(function(codes){
-            if(_scanStop) return;
-            if(codes && codes.length){
-              var code = (codes[0].rawValue || "").trim();
-              if(code){
-                _scanStop = true;
-                if(status) status.textContent = "Found "+code+" — looking up nutrition…";
-                lookupBarcodeFood(code).finally(function(){
-                  stopBarcodeScan();
-                  closeModal();
-                  render();
-                });
+        streamRef = stream;
+        vid.srcObject = stream;
+        msg.textContent = "Scanning…";
+        var tick = function(){
+          if (!vid || vid.readyState < 2) { requestAnimationFrame(tick); return; }
+          detector.detect(vid).then(function(codes){
+            if (codes && codes.length) {
+              var raw = codes[0].rawValue || "";
+              if (!raw) { requestAnimationFrame(tick); return; }
+              // Found a code
+              msg.textContent = "Found: " + raw;
+              // If mapped, add immediately
+              var fk = NUPC[raw];
+              if (fk && NFOODS[fk]) {
+                if (!NLOG[selDate]) NLOG[selDate] = [];
+                NLOG[selDate].push(calcItem(NFOODS[fk], 0, 1));
+                saveAll();
+                stop(streamRef);
+                closeModal();
+                render();
                 return;
               }
+              // Otherwise offer linking
+              var opts = Object.keys(NFOODS).sort().map(function(k){
+                return '<option value="'+esc(k)+'">'+esc(NFOODS[k].name)+'</option>';
+              }).join("");
+              link.style.display = "block";
+              link.innerHTML =
+                '<div style="background:var(--c2);border-radius:12px;padding:10px">'+
+                  '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Link barcode to a food</div>'+
+                  '<select class="inp" id="scan-pick" style="width:100%;margin-bottom:8px">'+opts+'</select>'+
+                  '<div class="row" style="gap:8px">'+
+                    '<button class="btn bp" id="scan-link-btn" style="flex:1">Save Link</button>'+
+                    '<button class="btn bs" id="scan-cancel" style="width:110px">Cancel</button>'+
+                  '</div>'+
+                '</div>';
+              var cancel = document.getElementById("scan-cancel");
+              if (cancel) cancel.addEventListener("click", close);
+              var linkBtn = document.getElementById("scan-link-btn");
+              if (linkBtn) linkBtn.addEventListener("click", function(){
+                var pick = document.getElementById("scan-pick");
+                var key = pick ? pick.value : "";
+                if (!key || !NFOODS[key]) return;
+                NUPC[raw] = key;
+                saveAll();
+                if (!NLOG[selDate]) NLOG[selDate] = [];
+                NLOG[selDate].push(calcItem(NFOODS[key], 0, 1));
+                saveAll();
+                stop(streamRef);
+                closeModal();
+                render();
+              });
+              // pause loop (keep stream) until user acts
+              return;
             }
-            requestAnimationFrame(loop);
+            requestAnimationFrame(tick);
           }).catch(function(){
-            requestAnimationFrame(loop);
+            requestAnimationFrame(tick);
           });
-        })();
+        };
+        requestAnimationFrame(tick);
       })
       .catch(function(err){
-        if(status) status.textContent = "Camera error: " + (err && err.message ? err.message : err);
+        msg.textContent = "Camera error: " + (err && err.message ? err.message : err);
       });
   }
-
-  function lookupBarcodeFood(code){
-    // OpenFoodFacts v2 endpoint
-    return fetch("https://world.openfoodfacts.org/api/v2/product/"+encodeURIComponent(code)+".json")
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        if(!j || !j.product){ alert("Barcode not found in OpenFoodFacts."); return; }
-        var p = j.product;
-        var name = (p.product_name || p.generic_name || "Scanned Food").trim();
-        var nutr = p.nutriments || {};
-        // Prefer per 100g values; OFF uses kcal for energy-kcal_100g
-        var cal100 = toNum(nutr["energy-kcal_100g"]);
-        if(!cal100 && nutr["energy_100g"]) cal100 = Math.round(toNum(nutr["energy_100g"])/4.184);
-        var p100 = toNum(nutr["proteins_100g"]);
-        var c100 = toNum(nutr["carbohydrates_100g"]);
-        var f100 = toNum(nutr["fat_100g"]);
-
-        if(!cal100 && !p100 && !c100 && !f100){
-          alert("Found the item, but nutrition data is missing.");
-          return;
-        }
-
-        // Add to foods library (keyed) so it can be reused
-        var key = foodKey(name);
-        NFOODS[key] = {
-          name: name,
-          per100: { cal: cal100||0, p: p100||0, c: c100||0, f: f100||0 },
-          serving: { label: "100 g", grams: 100 }
-        };
-
-        // Add 100g to today's log
-        if(!NLOG[selDate]) NLOG[selDate] = [];
-        NLOG[selDate].push({
-          id: uid(),
-          name: name,
-          grams: 100,
-          servings: 0,
-          cal: Math.round((cal100||0)*1),
-          p: Math.round((p100||0)*1),
-          c: Math.round((c100||0)*1),
-          f: Math.round((f100||0)*1),
-          at: Date.now()
-        });
-
-        saveAll();
-      })
-      .catch(function(){
-        alert("Could not fetch barcode nutrition. Check your connection.");
-      });
-  }
-
 
   // -----------------------------
   // RENDER
@@ -661,7 +638,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (view === "nutrition") {
       var dayData = dayNutrition(selDate);
       var totals = dayData.totals;
-      var canScan = ("BarcodeDetector" in window);
       var goals = calcAutoGoals();
 
       h += '<div class="sect">🍽️ Nutrition</div>';
@@ -696,10 +672,7 @@ document.addEventListener("DOMContentLoaded", function () {
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Grams</div><input class="inp" type="number" id="food-grams" placeholder="g"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Servings</div><input class="inp" type="number" id="food-serv" placeholder="x" step="0.5"></div>';
       h += '</div>';
-      h += '<div class="row" style="gap:8px;margin-top:10px">'+
-            '<button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button>'+
-            (canScan ? '<button class="btn bs" id="scan-bc" style="flex:1">📷 Scan</button>' : '<button class="btn bs" style="flex:1;opacity:.5" disabled>📷 Scan</button>')+
-            '</div>';
+      h += '<div class="row" style="gap:8px;margin-top:10px"><button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button><button class="btn bs bf" id="scan-food-btn" style="width:120px">📷 Scan</button></div>';
 
       h += '<datalist id="foodlist">';
       Object.keys(NFOODS).sort().forEach(function(k){
@@ -710,16 +683,11 @@ document.addEventListener("DOMContentLoaded", function () {
       h += '<div style="margin-top:12px;font-size:12px;font-weight:900">⚡ Quick Add</div>';
       h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">';
       QUICK_FOODS.forEach(function(nm){
-        var f = findFood(nm);
-        var calTxt = "";
-        if(f){
-          var g = (f.serving && f.serving.grams) ? f.serving.grams : 100;
-          var cal = Math.round(f.per100.cal * g / 100);
-          var p = Math.round(f.per100.p * g / 100);
-          calTxt = '<div style="font-size:9px;color:var(--mt);margin-top:2px">'+cal+' cal • '+p+'P</div>';
-        }
-        h += '<button class="btn bs food-quick" data-name="'+esc(nm)+'" style="padding:6px 10px;font-size:11px;line-height:1.1">'+
-             '<div style="font-weight:800">'+esc(nm)+'</div>'+calTxt+
+        var food = findFoodByName(nm);
+        var it = food ? calcItem(food, 0, 1) : null; // default serving
+        var meta = it ? ('<span style="font-size:9px;color:var(--mt);margin-left:6px">'+it.cal+' cal · '+it.p+'P</span>') : '';
+        h += '<button class="btn bs food-quick" data-name="'+esc(nm)+'" style="padding:6px 10px;font-size:11px;display:flex;align-items:center;gap:6px">'+
+              '<span>'+esc(nm)+'</span>'+meta+
              '</button>';
       });
       h += '</div>';
@@ -764,18 +732,14 @@ document.addEventListener("DOMContentLoaded", function () {
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Steps/day</div><input id="set-steps" class="inp" type="number" min="0" max="30000" step="500" value="'+(USER.stepsPerDay||10000)+'"></div>';
       h += '</div>';
       h += '<div style="height:10px"></div>';
-      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Goal mode</div>';
-      var gm = USER.goalMode || "performance";
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Cut aggressiveness</div>';
+      var ag = USER.cutAggressiveness || "moderate";
       h += '<div class="row" style="gap:6px;flex-wrap:wrap">';
-      [
-        {k:"performance", lbl:"Performance cut"},
-        {k:"moderate", lbl:"Moderate cut"},
-        {k:"aggressive", lbl:"Aggressive cut"},
-        {k:"maintenance", lbl:"Maintenance"}
-      ].forEach(function(x){
-        h += '<button class="btn bs set-gm'+(gm===x.k?' on':'')+'" data-v="'+x.k+'" style="padding:6px 10px;font-size:11px">'+x.lbl+'</button>';
+      ["performance","moderate","aggressive"].forEach(function(x){
+        var lbl = x==="performance" ? "performance" : x;
+        h += '<button class="btn bs set-aggr'+(ag===x?' on':'')+'" data-v="'+x+'" style="padding:6px 10px;font-size:11px">'+lbl+'</button>';
       });
-      h += '</div><div style="font-size:10px;color:var(--mt);margin-top:6px;line-height:1.35">Performance cut = smaller deficit + higher protein to keep strength moving.</div></div>';
+      h += '</div></div>';
       h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
       h += '</div>';
 
@@ -982,6 +946,10 @@ document.addEventListener("DOMContentLoaded", function () {
       render();
     };
 
+    // Barcode scan (optional)
+    var scanBtn = document.getElementById("scan-food-btn");
+    if (scanBtn) scanBtn.addEventListener("click", scanFoodBarcode);
+
     document.querySelectorAll(".food-quick").forEach(function(btn){
       btn.onclick = function(){
         var nm = this.getAttribute("data-name");
@@ -1027,11 +995,9 @@ document.addEventListener("DOMContentLoaded", function () {
       alert("Saved!");
       render();
     };
-    document.querySelectorAll(".set-gm").forEach(function(btn){
+    document.querySelectorAll(".set-aggr").forEach(function(btn){
       btn.onclick = function(){
-        USER.goalMode = this.getAttribute("data-v") || "performance";
-        // keep legacy field loosely in sync
-        USER.cutAggressiveness = (USER.goalMode==="aggressive") ? "high" : (USER.goalMode==="moderate") ? "moderate" : "low";
+        USER.cutAggressiveness = this.getAttribute("data-v") || "moderate";
         saveAll();
         render();
       };
@@ -1076,16 +1042,7 @@ document.addEventListener("DOMContentLoaded", function () {
       importFile.value = "";
     };
 
-    
-    // Nutrition: barcode scan
-    var scanBtn = document.getElementById("scan-bc");
-    if(scanBtn){
-      scanBtn.onclick = function(){
-        openBarcodeScan();
-      };
-    }
-
-var resetBtn = document.getElementById("reset-btn");
+    var resetBtn = document.getElementById("reset-btn");
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
       W = {}; BW = {}; PR = {}; NLOG = {};
