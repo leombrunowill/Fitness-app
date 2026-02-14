@@ -374,14 +374,20 @@ function openBarcodeScanner(){
   var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
   var NLOG = ld("il_nlog", {});   // nutrition log by date
   var NUPC = ld("il_nupc", {});   // barcode -> foodKey mapping
+  var FOOD_SEARCH_TEXT = ld("il_food_search", "");
 
   // activity assumptions (used for calorie targets)
   var USER = ld("il_user", {
     sessionsPerWeek: 5,
     stepsPerDay: 10000,
-    cutAggressiveness: "performance", // "performance" | "moderate" | "aggressive"
+    goalMode: "cut", // "cut" | "maintain" | "bulk"
+    goalPace: "moderate", // "performance" | "moderate" | "aggressive"
+    cutAggressiveness: "performance", // legacy support
     autoGoals: true
   });
+
+  if (!USER.goalMode) USER.goalMode = "cut";
+  if (!USER.goalPace) USER.goalPace = USER.cutAggressiveness || "moderate";
 
   function saveAll() {
     sv("il_th", TH);
@@ -394,6 +400,7 @@ function openBarcodeScanner(){
     sv("il_nlog", NLOG);
     sv("il_nfoods", NFOODS);
     sv("il_nupc", NUPC);
+    sv("il_food_search", FOOD_SEARCH_TEXT);
     sv("il_user", USER);
   }
 
@@ -489,6 +496,48 @@ function exerciseList(group){
   // -----------------------------
   function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 
+  function normSearch(v) {
+    return String(v || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function levenshtein(a, b) {
+    a = normSearch(a); b = normSearch(b);
+    if (!a) return b.length;
+    if (!b) return a.length;
+    var dp = Array(b.length + 1);
+    for (var j = 0; j <= b.length; j++) dp[j] = j;
+    for (var i = 1; i <= a.length; i++) {
+      var prev = dp[0];
+      dp[0] = i;
+      for (var k = 1; k <= b.length; k++) {
+        var tmp = dp[k];
+        var cost = (a[i - 1] === b[k - 1]) ? 0 : 1;
+        dp[k] = Math.min(dp[k] + 1, dp[k - 1] + 1, prev + cost);
+        prev = tmp;
+      }
+    }
+    return dp[b.length];
+  }
+
+  function foodSearch(inputName, limit) {
+    var q = normSearch(inputName);
+    if (!q) return [];
+    var toks = q.split(" ").filter(Boolean);
+    var list = Object.keys(NFOODS).map(function(key){
+      var food = NFOODS[key] || {};
+      var nm = normSearch(food.name || key);
+      var score = 0;
+      if (nm === q || key === q) score += 1000;
+      if (nm.indexOf(q) >= 0 || key.indexOf(q) >= 0) score += 250;
+      toks.forEach(function(t){ if (nm.indexOf(t) >= 0 || key.indexOf(t) >= 0) score += 80; });
+      var d = levenshtein(q, nm.slice(0, Math.max(q.length, 3)));
+      score += Math.max(0, 60 - (d * 8));
+      return { key: key, food: food, score: score };
+    }).filter(function(x){ return x.score > 20; });
+    list.sort(function(a, b){ return b.score - a.score; });
+    return list.slice(0, limit || 8);
+  }
+
   function findFoodByName(inputName) {
     var q = String(inputName || "").trim();
     if (!q) return null;
@@ -501,12 +550,8 @@ function exerciseList(group){
     });
     if (exact) return NFOODS[exact];
 
-    var ql = q.toLowerCase();
-    var hitKey = Object.keys(NFOODS).find(function(key){
-      var nm = (NFOODS[key].name || "").toLowerCase();
-      return nm.includes(ql) || key.includes(ql);
-    });
-    return hitKey ? NFOODS[hitKey] : null;
+    var hits = foodSearch(q, 1);
+    return hits.length ? hits[0].food : null;
   }
 
   function calcItem(food, grams, servings) {
@@ -575,12 +620,15 @@ function exerciseList(group){
     var bw = latestBodyweight();
     if (!bw) return { cal: 2400, p: 180, c: 260, f: 70, note: "Log bodyweight for personalized targets." };
 
+    var mode = USER.goalMode || "cut";
+    var pace = USER.goalPace || USER.cutAggressiveness || "moderate";
     var maint = bw * 15;
-
-    var def = USER.cutAggressiveness === "aggressive" ? 600
-            : USER.cutAggressiveness === "moderate" ? 400
-            : USER.cutAggressiveness === "performance" ? 250
-            : 250; // performance-first
+    var delta = 0;
+    if (mode === "cut") {
+      delta = pace === "aggressive" ? -600 : pace === "moderate" ? -400 : -250;
+    } else if (mode === "bulk") {
+      delta = pace === "aggressive" ? 450 : pace === "moderate" ? 300 : 180;
+    }
 
     var actAdj = 0;
     if ((USER.sessionsPerWeek || 0) >= 5) actAdj += 150;
@@ -588,22 +636,37 @@ function exerciseList(group){
     if ((USER.stepsPerDay || 0) >= 10000) actAdj += 100;
     else if ((USER.stepsPerDay || 0) <= 5000) actAdj -= 100;
 
-    var targetCal = Math.round(maint + actAdj - def);
+    var targetCal = Math.round(maint + actAdj + delta);
 
     var tr = bwTrend14();
     if (tr) {
       var perWeek = (tr.delta / 2);
       var pctPerWeek = (perWeek / bw) * 100;
-      if (pctPerWeek <= -1.0) targetCal += 150;
-      if (pctPerWeek >= -0.1) targetCal -= 150;
+      if (mode === "cut") {
+        if (pctPerWeek <= -1.0) targetCal += 150;
+        if (pctPerWeek >= -0.1) targetCal -= 150;
+      }
+      if (mode === "bulk") {
+        if (pctPerWeek >= 0.6) targetCal -= 120;
+        if (pctPerWeek <= 0.1) targetCal += 120;
+      }
     }
 
-    var p = Math.round(bw * 0.9);
-    var f = Math.round(bw * 0.3);
+    var pMult = mode === "cut" ? 0.9 : mode === "bulk" ? 0.8 : 0.85;
+    var fMult = mode === "cut" ? 0.3 : mode === "bulk" ? 0.35 : 0.33;
+    var p = Math.round(bw * pMult);
+    var f = Math.round(bw * fMult);
     var calFromPF = p * 4 + f * 9;
     var c = Math.max(0, Math.round((targetCal - calFromPF) / 4));
 
-    return { cal: targetCal, p: p, c: c, f: f, note: "Auto-targets update from 14-day weight trend + activity." };
+    return {
+      cal: targetCal,
+      p: p,
+      c: c,
+      f: f,
+      mode: mode,
+      note: "Auto-targets update from 14-day weight trend + activity. Goal: " + mode + "."
+    };
   }
 
   // -----------------------------
@@ -955,7 +1018,7 @@ function exerciseList(group){
       h += '</div>';
 
       var g = calcAutoGoals();
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🎯 Auto Nutrition Targets (Cut)</div>';
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🎯 Auto Nutrition Targets</div>';
       h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">';
       h += '<div><div style="font-size:18px;font-weight:900">'+g.cal+'</div><div style="font-size:10px;color:var(--mt)">Calories</div></div>';
       h += '<div><div style="font-size:18px;font-weight:900">'+g.p+'g</div><div style="font-size:10px;color:var(--mt)">Protein</div></div>';
@@ -970,15 +1033,33 @@ function exerciseList(group){
       var dayData = dayNutrition(selDate);
       var totals = dayData.totals;
       var goals = calcAutoGoals();
+      var foodHits = foodSearch(FOOD_SEARCH_TEXT, 6);
 
       h += '<div class="sect">🍽️ Nutrition</div>';
+
+      h += '<div class="card">';
+      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🔎 Food Finder (fuzzy search)</div>';
+      h += '<input class="inp" id="food-search" value="'+esc(FOOD_SEARCH_TEXT)+'" placeholder="Search foods (e.g., chkn brst, yogrt, bagle)">';
+      if (FOOD_SEARCH_TEXT && !foodHits.length) {
+        h += '<div style="font-size:11px;color:var(--mt);margin-top:8px">No matches yet. Try a shorter term.</div>';
+      }
+      foodHits.forEach(function(hit){
+        var f = hit.food || {};
+        var per = f.per100 || {cal:0,p:0,c:0,f:0};
+        h += '<div style="margin-top:8px;padding:8px;border:1px solid var(--c2);border-radius:10px;display:flex;justify-content:space-between;gap:8px;align-items:center">';
+        h += '<div style="min-width:0"><div style="font-size:12px;font-weight:800">'+esc(f.name || hit.key)+'</div>';
+        h += '<div style="font-size:10px;color:var(--mt)">Per 100g: '+Math.round(per.cal||0)+' cal · P '+(per.p||0)+' · C '+(per.c||0)+' · F '+(per.f||0)+'</div></div>';
+        h += '<button class="btn bs food-use" data-key="'+esc(hit.key)+'" style="padding:6px 10px;font-size:11px">Use</button>';
+        h += '</div>';
+      });
+      h += '</div>';
 
       var calPct = Math.min(100, Math.round((totals.cal / goals.cal) * 100));
       var pPct = Math.min(100, Math.round((totals.p / goals.p) * 100));
       h += '<div class="card">';
       h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
       h += '<div style="font-size:13px;font-weight:900">Daily Targets</div>';
-      h += '<div style="font-size:10px;color:var(--mt)">Auto (cut)</div>';
+      h += '<div style="font-size:10px;color:var(--mt)">Auto ('+esc((goals.mode||"cut").charAt(0).toUpperCase() + (goals.mode||"cut").slice(1))+')</div>';
       h += '</div>';
       h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">';
       h += '<div><div style="font-size:16px;font-weight:900">'+totals.cal+' / '+goals.cal+'</div><div style="font-size:10px;color:var(--mt)">Calories</div></div>';
@@ -1088,8 +1169,16 @@ function exerciseList(group){
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Steps/day</div><input id="set-steps" class="inp" type="number" min="0" max="30000" step="500" value="'+(USER.stepsPerDay||10000)+'"></div>';
       h += '</div>';
       h += '<div style="height:10px"></div>';
-      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Cut aggressiveness</div>';
-      var ag = USER.cutAggressiveness || "moderate";
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Goal</div>';
+      var gm = USER.goalMode || "cut";
+      h += '<div class="row" style="gap:6px;flex-wrap:wrap">';
+      ["cut","maintain","bulk"].forEach(function(x){
+        h += '<button class="btn bs set-goal'+(gm===x?' on':'')+'" data-v="'+x+'" style="padding:6px 10px;font-size:11px">'+x+'</button>';
+      });
+      h += '</div></div>';
+      h += '<div style="height:10px"></div>';
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Goal pace</div>';
+      var ag = USER.goalPace || USER.cutAggressiveness || "moderate";
       h += '<div class="row" style="gap:6px;flex-wrap:wrap">';
       ["performance","moderate","aggressive"].forEach(function(x){
         var lbl = x==="performance" ? "performance" : x;
@@ -1337,9 +1426,11 @@ function exerciseList(group){
       if (!calc) return alert("Enter grams or servings.");
 
       ensureDay(selDate);
+      var foodKeyHit = foodKey(food.name || name);
       NLOG[selDate].push({
         id: uid(),
         name: food.name,
+        key: foodKeyHit,
         grams: calc.grams,
         servings: calc.servings,
         cal: calc.cal,
@@ -1356,6 +1447,24 @@ function exerciseList(group){
       saveAll();
       render();
     };
+
+    var foodSearchEl = document.getElementById("food-search");
+    if (foodSearchEl) {
+      foodSearchEl.oninput = function(){
+        FOOD_SEARCH_TEXT = this.value || "";
+        sv("il_food_search", FOOD_SEARCH_TEXT);
+        render();
+      };
+    }
+
+    document.querySelectorAll(".food-use").forEach(function(btn){
+      btn.onclick = function(){
+        var k = this.getAttribute("data-key");
+        if (!k || !NFOODS[k]) return;
+        var n = document.getElementById("food-name");
+        if (n) n.value = NFOODS[k].name || k;
+      };
+    });
 
     // Barcode scan (optional)
     var scanBtn = document.getElementById("scan-food-btn");
@@ -1431,7 +1540,15 @@ document.querySelectorAll(".food-del").forEach(function(btn){
     };
     document.querySelectorAll(".set-aggr").forEach(function(btn){
       btn.onclick = function(){
-        USER.cutAggressiveness = this.getAttribute("data-v") || "moderate";
+        USER.goalPace = this.getAttribute("data-v") || "moderate";
+        USER.cutAggressiveness = USER.goalPace;
+        saveAll();
+        render();
+      };
+    });
+    document.querySelectorAll(".set-goal").forEach(function(btn){
+      btn.onclick = function(){
+        USER.goalMode = this.getAttribute("data-v") || "cut";
         saveAll();
         render();
       };
