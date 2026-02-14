@@ -87,7 +87,34 @@ document.addEventListener("DOMContentLoaded", function () {
     "pasta cooked":          { name:"Pasta (cooked)",          per100:{cal:158,p:5.8,c:30.9,f:0.9}, serving:{label:"180 g", grams:180} },
     "egg":                   { name:"Whole Egg",               per100:{cal:143,p:13,c:1.1,f:9.5}, serving:{label:"1 large", grams:50} },
     "greek yogurt nonfat":   { name:"Greek Yogurt (nonfat)",   per100:{cal:59,p:10.3,c:3.6,f:0.4}, serving:{label:"170 g cup", grams:170} },
-    "wesley farms blueberry granola": { name:"Wesley Farms Blueberry Granola", per100:{cal:471,p:9,c:68,f:18}, serving:{label:"1/2 cup", grams:55} }
+    "wesley farms blueberry granola": { name:"Wesley Farms Blueberry Granola", per100:{cal:471,p:9,c:68,f:18}, serving:{label:"1/2 cup", grams:55} },
+    "whey protein":          { name:"Whey Protein Powder",      per100:{cal:400,p:80,c:8,f:6}, serving:{label:"1 scoop", grams:30} },
+    "milk 2%":               { name:"Milk (2%)",                per100:{cal:50,p:3.4,c:4.9,f:2.0}, serving:{label:"1 cup", grams:244} },
+    "almond milk unsweetened": { name:"Almond Milk (unsweetened)", per100:{cal:15,p:0.5,c:0.6,f:1.2}, serving:{label:"1 cup", grams:240} },
+    "peanut butter":         { name:"Peanut Butter",            per100:{cal:588,p:25,c:20,f:50}, serving:{label:"1 tbsp", grams:16} },
+    "banana":                { name:"Banana",                   per100:{cal:89,p:1.1,c:23,f:0.3}, serving:{label:"1 medium", grams:118} },
+    "apple":                 { name:"Apple",                    per100:{cal:52,p:0.3,c:14,f:0.2}, serving:{label:"1 medium", grams:182} },
+    "blueberries":           { name:"Blueberries",              per100:{cal:57,p:0.7,c:14,f:0.3}, serving:{label:"1 cup", grams:148} },
+    "strawberries":          { name:"Strawberries",             per100:{cal:32,p:0.7,c:7.7,f:0.3}, serving:{label:"1 cup", grams:152} },
+    "broccoli":              { name:"Broccoli",                 per100:{cal:35,p:2.4,c:7.2,f:0.4}, serving:{label:"1 cup", grams:91} },
+    "spinach":               { name:"Spinach",                  per100:{cal:23,p:2.9,c:3.6,f:0.4}, serving:{label:"2 cups", grams:60} },
+    "avocado":               { name:"Avocado",                  per100:{cal:160,p:2,c:8.5,f:14.7}, serving:{label:"1/2 avocado", grams:75} },
+    "olive oil":             { name:"Olive Oil",                per100:{cal:884,p:0,c:0,f:100}, serving:{label:"1 tbsp", grams:13.5} },
+    "tortilla flour":        { name:"Flour Tortilla",           per100:{cal:310,p:8.5,c:52,f:7.5}, serving:{label:"1 tortilla", grams:50} },
+    "bread white":           { name:"White Bread",              per100:{cal:265,p:9,c:49,f:3.2}, serving:{label:"1 slice", grams:25} },
+    "rice cake":             { name:"Rice Cake",                per100:{cal:387,p:7.5,c:81,f:2.8}, serving:{label:"1 cake", grams:9} },
+    "cheddar cheese":        { name:"Cheddar Cheese",           per100:{cal:403,p:25,c:1.3,f:33}, serving:{label:"1 oz", grams:28} },
+    "cottage cheese lowfat": { name:"Cottage Cheese (lowfat)",  per100:{cal:81,p:11.1,c:3.4,f:2.3}, serving:{label:"1/2 cup", grams:113} },
+    "tuna canned":           { name:"Tuna (canned)",            per100:{cal:116,p:26,c:0,f:1}, serving:{label:"1 can", grams:120} },
+    "salmon cooked":         { name:"Salmon (cooked)",          per100:{cal:208,p:20,c:0,f:13}, serving:{label:"6 oz", grams:170} },
+    "turkey breast deli":    { name:"Turkey Breast (deli)",     per100:{cal:104,p:17,c:3,f:2}, serving:{label:"4 oz", grams:112} },
+    "steak sirloin cooked":  { name:"Sirloin Steak (cooked)",   per100:{cal:217,p:26,c:0,f:12}, serving:{label:"6 oz", grams:170} },
+    "oats":                  { name:"Oats (dry)",               per100:{cal:389,p:16.9,c:66.3,f:6.9}, serving:{label:"40 g", grams:40} },
+    "pasta sauce marinara":  { name:"Marinara Sauce",           per100:{cal:50,p:1.7,c:9.0,f:1.2}, serving:{label:"1/2 cup", grams:125} },
+    "potatoes fries":        { name:"French Fries",             per100:{cal:312,p:3.4,c:41,f:15}, serving:{label:"150 g", grams:150} },
+    "egg whites":            { name:"Egg Whites",               per100:{cal:52,p:11,c:0.7,f:0.2}, serving:{label:"3 large", grams:99} },
+    "greek yogurt 2%":       { name:"Greek Yogurt (2%)",        per100:{cal:73,p:9.95,c:3.94,f:1.92}, serving:{label:"170 g cup", grams:170} },
+    "protein bar":           { name:"Protein Bar",              per100:{cal:350,p:25,c:35,f:10}, serving:{label:"1 bar", grams:65} }
   });
 
 // ─────────────────────────────────────────────────────────────
@@ -386,6 +413,43 @@ function openBarcodeScanner(){
     return Math.round(w * (1 + r / 30));
   }
 
+
+  function lastExercisePerf(exName){
+    // Most recent logged set with weight/reps for this exercise
+    var dates = Object.keys(W).sort().reverse();
+    for(var di=0; di<dates.length; di++){
+      var d = dates[di], day = W[d] || [];
+      for(var ei=0; ei<day.length; ei++){
+        var e = day[ei];
+        if(e && e.exercise === exName && e.sets && e.sets.length){
+          // use heaviest set as representative
+          var best=null;
+          e.sets.forEach(function(s){
+            if(!s) return;
+            var w=+s.w||0, r=+s.r||0;
+            if(w<=0||r<=0) return;
+            if(!best || w>best.w || (w===best.w && r>best.r)) best={w:w,r:r};
+          });
+          if(best) return {date:d, w:best.w, r:best.r, e1:e1rm(best.w,best.r)};
+        }
+      }
+    }
+    return null;
+  }
+
+  function overloadSuggestion(exName){
+    var p = lastExercisePerf(exName);
+    if(!p) return null;
+    // heuristic: add 5 lbs, or +1 rep at same weight
+    var incW = 5;
+    var w2 = p.w + incW;
+    var r2 = p.r + 1;
+    return {
+      last: p,
+      opt1: { w: w2, r: p.r },
+      opt2: { w: p.w, r: r2 }
+    };
+  }
   function ensureDay(ds) {
     if (!W[ds]) W[ds] = [];
     if (!NLOG[ds]) NLOG[ds] = [];
@@ -1069,6 +1133,24 @@ function openBarcodeScanner(){
 
     showModal(html);
 
+    var hintEl = document.getElementById("ae-hint");
+    function updateHint(){
+      if(!hintEl) return;
+      var exSel2 = document.getElementById("ae-ex");
+      var exName = exSel2 ? exSel2.value : "";
+      var sug = overloadSuggestion(exName);
+      if(!sug){
+        hintEl.style.display = "none";
+        hintEl.innerHTML = "";
+        return;
+      }
+      hintEl.style.display = "block";
+      hintEl.innerHTML = '📈 Progressive Overload · Last ('+fmtS(sug.last.date)+') '+
+        sug.last.w+'×'+sug.last.r+
+        ' · Try <strong>'+sug.opt1.w+'×'+sug.opt1.r+'</strong> or <strong>'+sug.opt2.w+'×'+sug.opt2.r+'</strong>';
+    }
+
+
     function fillExercises(group) {
       var exSel = document.getElementById("ae-ex");
       if (!exSel) return;
@@ -1079,6 +1161,7 @@ function openBarcodeScanner(){
     var gSel = document.getElementById("ae-group");
     if (gSel) {
       fillExercises(gSel.value);
+    updateHint();
       gSel.addEventListener("change", function(){ fillExercises(this.value); });
     }
 
