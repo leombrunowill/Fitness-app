@@ -616,12 +616,10 @@ function exerciseList(group){
   }
 
   function calcAutoGoals() {
-    var bw = latestBodyweight();
-    if (!bw) return { cal: 2400, p: 180, c: 260, f: 70, note: "Log bodyweight for personalized targets." };
 var mode = USER.goalMode || "cut";
     var pace = USER.goalPace || USER.cutAggressiveness || "moderate";
-    var maint = bw * 15;
-
+var bw = latestBodyweight();
+var maint = bw ? (bw * 15) : 2400;
  var delta = 0;
     if (mode === "cut") {
       delta = pace === "aggressive" ? -600 : pace === "moderate" ? -400 : -250;
@@ -637,8 +635,8 @@ var mode = USER.goalMode || "cut";
 
     var targetCal = Math.round(maint + actAdj + delta);
 
-    var tr = bwTrend14();
-    if (tr) {
+var tr = bw ? bwTrend14() : null;
+     if (tr) {
       var perWeek = (tr.delta / 2);
       var pctPerWeek = (perWeek / bw) * 100;
       if (mode === "cut") {
@@ -653,8 +651,9 @@ var mode = USER.goalMode || "cut";
 
     var pMult = mode === "cut" ? 0.9 : mode === "bulk" ? 0.8 : 0.85;
     var fMult = mode === "cut" ? 0.3 : mode === "bulk" ? 0.35 : 0.33;
-    var p = Math.round(bw * pMult);
-    var f = Math.round(bw * fMult);
+    var useBw = bw || 200;
+   var p = Math.round(useBw * pMult);
+ var f = Math.round(useBw * fMult);
     var calFromPF = p * 4 + f * 9;
     var c = Math.max(0, Math.round((targetCal - calFromPF) / 4));
 
@@ -664,7 +663,7 @@ var mode = USER.goalMode || "cut";
       c: c,
       f: f,
       mode: mode,
-      note: "Auto-targets update from 14-day weight trend + activity. Goal: " + mode + "."
+note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bodyweight for personalized targets; using a baseline estimate.") + " Goal: " + mode + "."
     };
   }
 
