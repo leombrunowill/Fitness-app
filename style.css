@@ -2,7 +2,16 @@
 [data-theme="light"]{--bg:#f3f4f6;--c1:#fff;--c2:#e5e7eb;--c3:#9ca3af;--tx:#111827;--mt:#6b7280}
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100dvh;-webkit-tap-highlight-color:transparent;padding-bottom:68px;transition:.3s}
 button{font-family:inherit;cursor:pointer}input,textarea{font-family:inherit}input[type=number]{-moz-appearance:textfield}input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none}
-.hdr{background:var(--c1);border-bottom:1px solid var(--c2);padding:10px 16px;position:sticky;top:0;z-index:40}.hdr-in{max-width:520px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}.logo{font-size:22px;font-weight:800;background:linear-gradient(to right,#60a5fa,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.thm{background:none;border:none;font-size:20px;padding:4px}
+.hdr{background:var(--c1);border-bottom:1px solid var(--c2);padding:10px 16px;position:sticky;top:0;z-index:40}.hdr-in{max-width:520px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}.logo{font-size:22px;font-weight:800;background:linear-gradient(to right,#60a5fa,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}..thm{
+  border:1px solid var(--c2);
+  background:var(--c2);
+  border-radius:12px;
+  font-size:18px;
+  padding:6px 10px;
+  line-height:1;
+}
+.thm:active{transform:scale(.97)}
+
 .bnav{position:fixed;bottom:0;left:0;right:0;background:var(--c1);border-top:1px solid var(--c2);display:flex;z-index:40;padding:4px 0 max(4px,env(safe-area-inset-bottom))}.nb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;background:none;border:none;color:var(--mt);font-size:9px;font-weight:600}.nb.on{color:#60a5fa}.ni{font-size:18px}
 .ctn{max-width:520px;margin:0 auto;padding:12px}
 .card{background:var(--c1);border-radius:14px;border:1px solid var(--c2);padding:14px;margin-bottom:12px}.badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;display:inline-block}
@@ -71,3 +80,56 @@ canvas{width:100%!important;height:180px!important;border-radius:8px}
 /* Weekly targets */
 .wt-row{margin-bottom:8px}.wt-head{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px}.wt-name{font-weight:600}.wt-nums{color:var(--mt)}
 .wt-bar{height:8px;background:var(--c2);border-radius:4px;overflow:hidden}.wt-fill{height:100%;border-radius:4px;transition:width .3s}
+/* ===== Elite polish (Safari-safe) ===== */
+
+/* Softer type + better readability */
+body{letter-spacing:-.01em;text-rendering:optimizeLegibility}
+
+/* Better touch feel */
+button,.btn,.nb,.pill,.pm{touch-action:manipulation}
+
+/* Slightly more premium cards */
+.card,.hc,.exc,.modal{
+  box-shadow: 0 10px 30px rgba(0,0,0,.14);
+}
+
+/* Glass header + bottom nav (works great in iOS Safari) */
+.hdr,.bnav{
+  background: color-mix(in srgb, var(--c1) 82%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* Cleaner bottom nav spacing + bigger tap targets */
+.nb{padding:8px 0}
+.ni{font-size:19px}
+
+/* Inputs feel more iOS */
+.inp,.txta,.search-inp{
+  border: 1px solid color-mix(in srgb, var(--c3) 65%, transparent);
+}
+.inp:focus,.txta:focus,.search-inp:focus{
+  box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+
+/* Buttons: better press feedback */
+.btn,.pm,.pill,.exb{
+  transition: transform .08s ease, filter .15s ease, background .15s ease;
+}
+.btn:active,.pm:active,.pill:active,.exb:active{transform:scale(.98)}
+
+/* Reduce harsh borders in dark mode */
+:root .card,:root .hc,:root .exc{
+  border-color: color-mix(in srgb, var(--c2) 80%, transparent);
+}
+
+/* Light mode: a touch more contrast */
+[data-theme="light"] .card,
+[data-theme="light"] .hc,
+[data-theme="light"] .exc{
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+}
+
+/* Safer sticky header overlap with iOS safe-area */
+.hdr{padding-top: calc(10px + env(safe-area-inset-top))}
+
