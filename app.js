@@ -90,6 +90,235 @@ document.addEventListener("DOMContentLoaded", function () {
     "wesley farms blueberry granola": { name:"Wesley Farms Blueberry Granola", per100:{cal:471,p:9,c:68,f:18}, serving:{label:"1/2 cup", grams:55} }
   });
 
+// ─────────────────────────────────────────────────────────────
+// Nutrition extras (meal presets + barcode map + granola add-on)
+// ─────────────────────────────────────────────────────────────
+function ensureFood(key, obj){
+  if(!NFOODS[key]) { NFOODS[key]=obj; sv("il_nfoods", NFOODS); }
+}
+// Add your granola (approx values; edit in-app later if you want)
+ensureFood("wesley farms blueberry granola", {
+  name:"Wesley Farms Blueberry Granola",
+  per100:{cal:471,p:10,c:64,f:20},
+  serving:{label:"60 g", grams:60}
+});
+
+// Meal presets (1-tap meals)
+var MEAL_PRESETS = ld("il_meal_presets", [
+  { id:"m_bfast", name:"Breakfast: Greek yogurt + granola", items:[
+    { key:"greek yogurt nonfat", grams:170, servings:0 },
+    { key:"wesley farms blueberry granola", grams:60, servings:0 }
+  ]},
+  { id:"m_lunch", name:"Lunch: Eggs + Canadian bacon + English muffin", items:[
+    { key:"egg", grams:100, servings:0 },                // ~2 large eggs
+    { key:"canadian bacon", grams:90, servings:0 },      // ~3 slices
+    { key:"english muffin", grams:57, servings:0 }
+  ]},
+  { id:"m_dinner", name:"Dinner: Rice + Chicken", items:[
+    { key:"white rice cooked", grams:150, servings:0 },
+    { key:"chicken breast cooked", grams:175, servings:0 }
+  ]}
+]);
+
+// Barcode → food key map (optional)
+var BARCODE_MAP = ld("il_barcode_map", {}); // { "0123456789012": "chicken breast cooked" }
+
+function saveMealPresets(){ sv("il_meal_presets", MEAL_PRESETS); }
+function saveBarcodeMap(){ sv("il_barcode_map", BARCODE_MAP); }
+
+function addPresetToDay(presetId){
+  var p=null;
+  for(var i=0;i<MEAL_PRESETS.length;i++){ if(MEAL_PRESETS[i].id===presetId){ p=MEAL_PRESETS[i]; break; } }
+  if(!p) return;
+  if(!NLOG[selDate]) NLOG[selDate]=[];
+  p.items.forEach(function(it){
+    var food = NFOODS[it.key];
+    if(!food) return;
+    var calc = calcItemFromFood(food, (it.grams||0), (it.servings||0));
+    if(!calc) return;
+    NLOG[selDate].push({
+      id: uid(),
+      name: food.name,
+      key: it.key,
+      grams: calc.grams,
+      servings: (it.servings||0),
+      cal: calc.cal, p: calc.p, c: calc.c, f: calc.f,
+      at: Date.now()
+    });
+  });
+  saveAll();
+  render();
+}
+
+function saveTodayAsPreset(){
+  var items = (NLOG[selDate]||[]);
+  if(!items.length) return alert("Log at least 1 food first.");
+  var name = prompt("Preset name? (e.g., Dinner: Beef + Potato)");
+  if(!name) return;
+  var pid = "m_"+String(Date.now());
+  var pitems=[];
+  items.forEach(function(it){
+    // try to map by key first, else by name lookup
+    var k = it.key;
+    if(!k){
+      var k2 = foodKey(it.name||"");
+      if(NFOODS[k2]) k=k2;
+      else {
+        // contains match
+        var found=null; Object.keys(NFOODS).some(function(kk){
+          var nn=(NFOODS[kk].name||"").toLowerCase();
+          if(nn.indexOf((it.name||"").toLowerCase())>=0){ found=kk; return true; }
+          return false;
+        });
+        if(found) k=found;
+      }
+    }
+    if(!k) return;
+    pitems.push({ key:k, grams: it.grams||0, servings: it.servings||0 });
+  });
+  MEAL_PRESETS.unshift({ id:pid, name:name, items:pitems });
+  saveMealPresets();
+  alert("Saved preset: "+name);
+  render();
+}
+
+// Weekly adherence + guardrails (simple + Safari-safe)
+function lastNDates(n){
+  var out=[], d=new Date();
+  for(var i=0;i<n;i++){
+    var x=new Date(d); x.setDate(d.getDate()-i);
+    out.push(x.toISOString().split("T")[0]);
+  }
+  return out;
+}
+function countWorkoutsLast7(){
+  var d=lastNDates(7), c=0;
+  for(var i=0;i<d.length;i++){ if(W[d[i]] && W[d[i]].length) c++; }
+  return c;
+}
+function totalSetsLast7(){
+  var d=lastNDates(7), s=0;
+  d.forEach(function(day){
+    (W[day]||[]).forEach(function(ex){
+      (ex.sets||[]).forEach(function(st){ if(st && st.r) s+=1; });
+    });
+  });
+  return s;
+}
+function weeklyAdherence(){
+  var workouts = countWorkoutsLast7();
+  var plan = 5; // your typical schedule
+  var workoutScore = Math.min(1, workouts/plan);
+  // guardrail: if sets are too high, adherence is capped (quality > junk volume)
+  var sets = totalSetsLast7();
+  var setCap = 130; // adjustable
+  var volumePenalty = sets>setCap ? Math.min(0.25, (sets-setCap)/setCap) : 0;
+  var score = Math.max(0, workoutScore - volumePenalty);
+  return {score:score, workouts:workouts, plan:plan, sets:sets, setCap:setCap};
+}
+
+// Barcode scanning (best-effort; Safari supports BarcodeDetector on newer versions)
+function canScanBarcode(){
+  return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+function openBarcodeScanner(){
+  if(!canScanBarcode()) return alert("Barcode scanning isn't supported on this Safari version.");
+  var html='';
+  html+='<div style="padding:16px">';
+  html+='<div style="font-size:14px;font-weight:800;margin-bottom:6px">📷 Scan Barcode</div>';
+  html+='<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Point your camera at the barcode. If it recognizes it, you can map it to a food once and then 1-tap add next time.</div>';
+  html+='<video id="bc-vid" style="width:100%;border-radius:12px;background:#000" playsinline></video>';
+  html+='<div class="row" style="gap:8px;margin-top:10px"><button class="btn bs" id="bc-close" style="flex:1">Close</button><button class="btn bp" id="bc-flip" style="flex:1">Flip</button></div>';
+  html+='<div id="bc-out" style="margin-top:10px;font-size:12px;color:var(--mt)"></div>';
+  html+='</div>';
+  showModal(html);
+
+  var stream=null, facing="environment", detector=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","qr_code"]});
+  var vid=document.getElementById("bc-vid"), out=document.getElementById("bc-out");
+
+  function stop(){
+    if(stream){ stream.getTracks().forEach(function(t){ try{t.stop();}catch(e){} }); stream=null; }
+  }
+  function start(){
+    stop();
+    navigator.mediaDevices.getUserMedia({video:{facingMode:facing}}).then(function(s){
+      stream=s; vid.srcObject=s; vid.play();
+      tick();
+    }).catch(function(err){
+      out.textContent="Camera error: "+(err && err.message ? err.message : err);
+    });
+  }
+  var scanning=true;
+  function tick(){
+    if(!scanning) return;
+    if(vid.readyState<2){ requestAnimationFrame(tick); return; }
+    detector.detect(vid).then(function(codes){
+      if(codes && codes.length){
+        var raw=codes[0].rawValue||"";
+        if(raw){
+          scanning=false;
+          stop();
+          out.innerHTML='<div style="font-weight:800;color:var(--tx);margin-bottom:6px">Found: '+raw+'</div>';
+          // If already mapped, quick add
+          if(BARCODE_MAP[raw]){
+            var k=BARCODE_MAP[raw], food=NFOODS[k];
+            if(food){
+              out.innerHTML+='<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Mapped to: <strong>'+food.name+'</strong></div>';
+              out.innerHTML+='<button class="btn bp" id="bc-add" style="width:100%;margin-bottom:8px">Add serving</button>';
+              setTimeout(function(){
+                var b=document.getElementById("bc-add");
+                if(b) b.addEventListener("click", function(){
+                  if(!NLOG[selDate]) NLOG[selDate]=[];
+                  var calc=calcItemFromFood(food, food.serving?food.serving.grams:0, 0);
+                  NLOG[selDate].push({id:uid(),name:food.name,key:k,grams:calc.grams,servings:0,cal:calc.cal,p:calc.p,c:calc.c,f:calc.f,at:Date.now()});
+                  saveAll(); closeModal(); render();
+                });
+              },30);
+            }
+          } else {
+            out.innerHTML+='<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Not mapped yet. Choose which food this barcode is:</div>';
+            out.innerHTML+='<input class="inp" id="bc-map-name" placeholder="Type food name (e.g., chicken)" style="width:100%;margin-bottom:8px">';
+            out.innerHTML+='<button class="btn bp" id="bc-map-save" style="width:100%">Save mapping</button>';
+            setTimeout(function(){
+              var sbtn=document.getElementById("bc-map-save");
+              if(sbtn) sbtn.addEventListener("click", function(){
+                var nm=(document.getElementById("bc-map-name").value||"").trim();
+                if(!nm) return;
+                var k=foodKey(nm);
+                var food=NFOODS[k];
+                if(!food){
+                  // contains match
+                  var kk=null; Object.keys(NFOODS).some(function(x){
+                    if((NFOODS[x].name||"").toLowerCase().indexOf(nm.toLowerCase())>=0){ kk=x; return true; }
+                    return false;
+                  });
+                  if(kk) { k=kk; food=NFOODS[kk]; }
+                }
+                if(!food) return alert("Food not found in your foods list.");
+                BARCODE_MAP[raw]=k; saveBarcodeMap();
+                alert("Mapped "+raw+" → "+food.name);
+                closeModal(); render();
+              });
+            },30);
+          }
+        }
+      } else {
+        requestAnimationFrame(tick);
+      }
+    }).catch(function(e){
+      requestAnimationFrame(tick);
+    });
+  }
+
+  setTimeout(function(){
+    var c=document.getElementById("bc-close");
+    var f=document.getElementById("bc-flip");
+    if(c) c.addEventListener("click", function(){ scanning=false; stop(); closeModal(); });
+    if(f) f.addEventListener("click", function(){ facing = (facing==="environment"?"user":"environment"); scanning=true; start(); });
+    start();
+  },30);
+}
+
   // Quick add list (NO olive oil)
   var QUICK_FOODS = [
     "Chicken Breast (cooked)",
@@ -535,6 +764,19 @@ document.addEventListener("DOMContentLoaded", function () {
     h += '<button class="pm" id="d-next">→</button>';
     h += '</div></div>';
 
+
+    // Weekly adherence + guardrails (last 7 days)
+    var adh = weeklyAdherence();
+    var adhPct = Math.round(adh.score * 100);
+    var volMsg = (adh.sets > adh.setCap) ? ('⚠️ Volume high ('+adh.sets+' sets / 7d). Consider trimming accessories.') : ('✅ Volume OK ('+adh.sets+' sets / 7d)');
+    h += '<div class="card" style="margin-top:8px">';
+    h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">';
+    h += '<div style="font-size:13px;font-weight:800">📌 Weekly Adherence</div>';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--gn)">'+adhPct+'%</div>';
+    h += '</div>';
+    h += '<div style="font-size:11px;color:var(--mt)">Workouts: <strong style="color:var(--tx)">'+adh.workouts+'/'+adh.plan+'</strong> · '+volMsg+'</div>';
+    h += '</div>';
+
     if (view === "log") {
       var bw = BW[selDate];
       h += '<div class="card">';
@@ -694,6 +936,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
       h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Tip: Use grams for cooked weights (e.g., 175g chicken). Servings uses the default serving size.</div>';
       h += '</div>';
+
+
+      // Meal presets
+      h += '<div class="card">';
+      h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<div style="font-size:13px;font-weight:800">🍱 Meal Presets</div>';
+      h += '<button class="btn bs" id="save-preset-btn" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
+      h += '</div>';
+      if (!MEAL_PRESETS.length) {
+        h += '<div style="font-size:11px;color:var(--mt)">No presets yet.</div>';
+      } else {
+        MEAL_PRESETS.forEach(function(p){
+          h += '<div class="row" style="justify-content:space-between;gap:8px;margin-bottom:6px">';
+          h += '<button class="btn bp preset-add" data-id="'+p.id+'" style="flex:1;padding:8px 10px;font-size:12px;text-align:left">➕ '+p.name+'</button>';
+          h += '<button class="del preset-del" data-id="'+p.id+'" title="Delete">×</button>';
+          h += '</div>';
+        });
+      }
+      if (canScanBarcode()) {
+        h += '<div style="height:6px"></div>';
+        h += '<button class="btn bs" id="scan-barcode-btn" style="width:100%">📷 Scan Barcode</button>';
+        h += '<div style="font-size:10px;color:var(--mt);margin-top:6px">Optional: map barcodes to foods once, then 1-tap add.</div>';
+      }
+      h += '</div>';
+
 
       h += '<div class="card">';
       h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">Food Log</div>';
@@ -974,7 +1241,30 @@ document.addEventListener("DOMContentLoaded", function () {
       };
     });
 
-    document.querySelectorAll(".food-del").forEach(function(btn){
+    
+    // Meal presets events
+    document.querySelectorAll(".preset-add").forEach(function(btn){
+      btn.onclick = function(){
+        var pid = this.getAttribute("data-id");
+        if(pid) addPresetToDay(pid);
+      };
+    });
+    document.querySelectorAll(".preset-del").forEach(function(btn){
+      btn.onclick = function(){
+        var pid = this.getAttribute("data-id");
+        if(!pid) return;
+        if(!confirm("Delete this preset?")) return;
+        MEAL_PRESETS = MEAL_PRESETS.filter(function(p){ return p.id !== pid; });
+        saveMealPresets();
+        render();
+      };
+    });
+    var sp = document.getElementById("save-preset-btn");
+    if(sp) sp.onclick = function(){ saveTodayAsPreset(); };
+    var sbc = document.getElementById("scan-barcode-btn");
+    if(sbc) sbc.onclick = function(){ openBarcodeScanner(); };
+
+document.querySelectorAll(".food-del").forEach(function(btn){
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
