@@ -61,15 +61,12 @@ document.addEventListener("DOMContentLoaded", function () {
   };
   var ICO = {Chest:"🏋️",Back:"🔙",Legs:"🦵",Shoulders:"🏹",Arms:"💪",Core:"🧘",Cardio:"🏃"};
   var QUOTES = [
-
-     {t:"Discipline is choosing what you want most over what you want now.",a:"Abraham Lincoln"},
+    {t:"Discipline is choosing what you want most over what you want now.",a:"Abraham Lincoln"},
     {t:"Success is the sum of small efforts, repeated day in and day out.",a:"Robert Collier"},
     {t:"The last three or four reps is what makes the muscle grow.",a:"Arnold Schwarzenegger"},
     {t:"The iron never lies to you.",a:"Henry Rollins"},
-    {t:"Consistency beats intensity.",a:"Unknown"},
-     {t:"Lightweight, baby!",a:"Ronnie Coleman"},
-   {t:"Everybody wants to be a bodybuilder, but nobody wants to lift no heavy-ass weight",a:"Ronnie Coleman"},
-    {t:""Ain't nothin' but a peanut!" ",a:"Ronnie Coleman"}
+    {t:"Consistency beats intensity.",a:"Unknown"}
+     {t:"You can do it, Brett!",a:"Your Friend, Will"}
   ];
 
   // -----------------------------
