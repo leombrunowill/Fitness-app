@@ -1723,7 +1723,7 @@ h += '<div class="card">';
       h += '</div>';
       h += '<div style="font-size:11px;color:var(--mt);margin-top:8px">Features now live: preset plans, one-tap routine scheduling, streaks, progressive overload hints, social feed, meal presets, barcode scan, and auto macro targets.</div>';
       h += '</div>';
-    }}
+    }
 
     if (view === "more") {
       h += '<div class="sect">⚡ More</div>';
