@@ -152,7 +152,25 @@ var BARCODE_MAP = ld("il_barcode_map", {}); // { "0123456789012": "chicken breas
 
 function saveMealPresets(){ sv("il_meal_presets", MEAL_PRESETS); }
 function saveBarcodeMap(){ sv("il_barcode_map", BARCODE_MAP); }
-   
+
+
+  function sanitizeNutritionState() {
+    if (!NFOODS || typeof NFOODS !== "object" || Array.isArray(NFOODS)) NFOODS = {};
+    if (!Array.isArray(MEAL_PRESETS)) MEAL_PRESETS = [];
+    MEAL_PRESETS = MEAL_PRESETS.filter(function(p){
+      return p && typeof p === "object" && typeof p.name === "string" && Array.isArray(p.items);
+    }).map(function(p){
+      var id = String(p.id || ("m_" + Date.now() + "_" + Math.random().toString(16).slice(2)));
+      var name = String(p.name || "Custom meal").trim() || "Custom meal";
+      var items = p.items.filter(function(it){
+        return it && NFOODS[it.key] && (+it.grams > 0 || +it.servings > 0);
+      }).map(function(it){
+        return { key: it.key, grams: Math.max(0, Math.round(+it.grams || 0)), servings: Math.max(0, round1(+it.servings || 0)) };
+      });
+      return { id:id, name:name, items:items };
+    });
+  }
+
 function findFoodKeyByName(name){
   var q = foodKey(name || "");
   if (!q) return "";
@@ -167,7 +185,7 @@ function findFoodKeyByName(name){
   }
   return "";
 }
-   
+
 function addPresetToDay(presetId){
   var p=null;
   for(var i=0;i<MEAL_PRESETS.length;i++){ if(MEAL_PRESETS[i].id===presetId){ p=MEAL_PRESETS[i]; break; } }
@@ -400,13 +418,7 @@ var FOOD_SEARCH_TEXT = ld("il_food_search", "");
     cutAggressiveness: "performance", // legacy support
     autoGoals: true
   });
- var SOC = ld("il_social", {
-    profileName: "You",
-    friends: [],
-    feed: [],
-    leaderboardLift: "Bench Press"
-  });
-   
+
    if (!USER.goalMode) USER.goalMode = "cut";
   if (!USER.goalPace) USER.goalPace = USER.cutAggressiveness || "moderate";
   function saveAll() {
@@ -422,7 +434,6 @@ var FOOD_SEARCH_TEXT = ld("il_food_search", "");
     sv("il_nupc", NUPC);
      sv("il_food_search", FOOD_SEARCH_TEXT);
     sv("il_user", USER);
-     sv("il_social", SOC);
   }
 
   // -----------------------------
@@ -494,91 +505,8 @@ function exerciseList(group){
     };
   }
   function ensureDay(ds) {
-    if (!W[ds]) W[ds] = [];
-    if (!NLOG[ds]) NLOG[ds] = [];
-  }
-
-   function socialId() {
-    return "s_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
-  }
-
-  function topPrs(limit) {
-    return Object.keys(PR || {}).map(function(k){
-      return { exercise: k, e1rm: +(PR[k] && PR[k].e1rm || 0) };
-    }).filter(function(x){ return x.e1rm > 0; })
-      .sort(function(a,b){ return b.e1rm - a.e1rm; })
-      .slice(0, limit || 3);
-  }
-
-  function dayWorkoutSummary(ds) {
-    var day = W[ds] || [];
-    var sets = 0, volume = 0;
-    day.forEach(function(ex){
-      (ex.sets || []).forEach(function(st){
-        var r = +st.r || 0;
-        var w = +st.w || 0;
-        sets += 1;
-        volume += (r * w);
-      });
-    });
-    return { exercises: day.length, sets: sets, volume: Math.round(volume) };
-  }
-
-  function mySocialSnapshot() {
-    var allWorkoutDays = Object.keys(W || {}).filter(function(d){ return (W[d] || []).length; });
-    var allSets = 0;
-    var allVolume = 0;
-    allWorkoutDays.forEach(function(d){
-      var s = dayWorkoutSummary(d);
-      allSets += s.sets;
-      allVolume += s.volume;
-    });
-    return {
-      name: SOC.profileName || "You",
-      workouts: allWorkoutDays.length,
-      sets: allSets,
-      volume: Math.round(allVolume),
-      prs: topPrs(5)
-    };
-  }
-
-  function leaderboardRows(lift) {
-    var me = mySocialSnapshot();
-    var meLift = (PR[lift] && PR[lift].e1rm) ? +(PR[lift].e1rm) : 0;
-    var rows = [{ name: me.name, score: meLift, workouts: me.workouts, isMe: true }];
-    (SOC.friends || []).forEach(function(fr){
-      rows.push({
-        name: fr.name,
-        score: +(fr.lifts && fr.lifts[lift] || 0),
-        workouts: +(fr.workouts || 0),
-        isMe: false
-      });
-    });
-    return rows.sort(function(a,b){
-      if (b.score !== a.score) return b.score - a.score;
-      return b.workouts - a.workouts;
-    });
-  }
-
-  function shareTodayWorkout() {
-    ensureDay(selDate);
-    var s = dayWorkoutSummary(selDate);
-    if (!s.exercises) {
-      alert("Log a workout first so there is something to share.");
-      return;
-    }
-    var p = topPrs(2).map(function(x){ return x.exercise + " " + x.e1rm + " e1RM"; }).join(" · ");
-    SOC.feed.unshift({
-      id: socialId(),
-      from: SOC.profileName || "You",
-      type: "workout",
-      date: selDate,
-      text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + s.volume + " lb volume)." + (p ? " Top PRs: " + p : ""),
-      at: Date.now()
-    });
-    SOC.feed = SOC.feed.slice(0, 80);
-    saveAll();
-    alert("Shared to your social feed.");
+    if (!Array.isArray(W[ds])) W[ds] = [];
+    if (!Array.isArray(NLOG[ds])) NLOG[ds] = [];
   }
 
   function updatePRFromEntry(ds, exEntry) {
@@ -599,7 +527,7 @@ function exerciseList(group){
   // Nutrition helpers
   // -----------------------------
   function uid() { return Math.random().toString(16).slice(2) + Date.now().toString(16); }
-    function round1(x){ return Math.round((+x || 0) * 10) / 10; }
+  function round1(x){ return Math.round((+x || 0) * 10) / 10; }
    function normSearch(v) {
     return String(v || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -670,7 +598,7 @@ function exerciseList(group){
     if (!g) return null;
 
     var per = food.per100 || {cal:0,p:0,c:0,f:0};
- return {
+    return {
       grams: Math.round(g),
       servings: servings ? round1(servings) : 0,
       cal: Math.round((per.cal || 0) * g / 100),
@@ -679,7 +607,7 @@ function exerciseList(group){
       f: round1((per.f || 0) * g / 100)
     };
   }
-function calcItemFromFood(food, grams, servings) {
+  function calcItemFromFood(food, grams, servings) {
     return calcItem(food, grams, servings);
   }
 
@@ -821,7 +749,7 @@ function calcItemFromFood(food, grams, servings) {
       render();
     };
   }
-   
+
   function dayNutrition(ds) {
     ensureDay(ds);
     var items = NLOG[ds] || [];
@@ -1177,11 +1105,8 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
       var day = W[selDate] || [];
       h += '<div class="row" style="justify-content:space-between;margin-top:4px;align-items:center">';
       h += '<div class="sect" style="margin:0">🏋️ Today\'s Workout</div>';
-      h += '<div class="row" style="gap:6px">';
-      h += '<button class="btn bs" id="share-workout-btn" style="padding:6px 10px;font-size:11px">🤝 Share</button>';
-       h += '<button class="btn bp" id="add-ex-btn" style="padding:6px 10px;font-size:11px">➕ Add</button>';
-      h += '</div>';
-       h += '</div><div style="height:8px"></div>';
+      h += '<button class="btn bp" id="add-ex-btn" style="padding:6px 10px;font-size:11px">➕ Add</button>';
+      h += '</div><div style="height:8px"></div>';
 
       if (!day.length) {
         h += '<div class="empty"><div style="font-size:40px;margin-bottom:8px">🏋️</div>No exercises logged yet.</div>';
@@ -1330,7 +1255,8 @@ h += '<div class="card">';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Servings</div><input class="inp" type="number" id="food-serv" placeholder="x" step="0.5"></div>';
       h += '</div>';
       h += '<div class="row" style="gap:8px;margin-top:10px"><button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button><button class="btn bs bf" id="scan-food-btn" style="width:120px">📷 Scan</button></div>';
-  h += '<div class="row" style="gap:8px;margin-top:8px"><button class="btn bs bf" id="open-custom-food-btn" style="flex:1">🧪 Custom food + macros</button></div>';
+      h += '<div class="row" style="gap:8px;margin-top:8px"><button class="btn bs bf" id="open-custom-food-btn" style="flex:1">🧪 Custom food + macros</button></div>';
+
       h += '<datalist id="foodlist">';
       Object.keys(NFOODS).sort().forEach(function(k){
         h += '<option value="'+esc(NFOODS[k].name)+'"></option>';
@@ -1357,18 +1283,18 @@ h += '<div class="card">';
       h += '<div class="card">';
       h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
       h += '<div style="font-size:13px;font-weight:800">🍱 Meal Presets</div>';
-       h += '<div class="row" style="gap:6px">';
+      h += '<div class="row" style="gap:6px">';
       h += '<button class="btn bs" id="open-custom-meal-btn" style="padding:6px 10px;font-size:11px">➕ New meal</button>';
-       h += '<button class="btn bs" id="save-preset-btn" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
+      h += '<button class="btn bs" id="save-preset-btn" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
       h += '</div>';
-       h += '</div>';
-       if (!MEAL_PRESETS.length) {
+      h += '</div>';
+      if (!MEAL_PRESETS.length) {
         h += '<div style="font-size:11px;color:var(--mt)">No presets yet.</div>';
       } else {
         MEAL_PRESETS.forEach(function(p){
           h += '<div class="row" style="justify-content:space-between;gap:8px;margin-bottom:6px">';
-          h += '<button class="btn bp preset-add" data-id="'+p.id+'" style="flex:1;padding:8px 10px;font-size:12px;text-align:left">➕ '+p.name+'</button>';
-          h += '<button class="del preset-del" data-id="'+p.id+'" title="Delete">×</button>';
+          h += '<button class="btn bp preset-add" data-id="'+esc(p.id)+'" style="flex:1;padding:8px 10px;font-size:12px;text-align:left">➕ '+esc(p.name)+'</button>';
+          h += '<button class="del preset-del" data-id="'+esc(p.id)+'" title="Delete">×</button>';
           h += '</div>';
         });
       }
@@ -1411,71 +1337,7 @@ h += '<div class="card">';
     if (view === "more") {
       h += '<div class="sect">⚡ More</div>';
 
-      var socialMe = mySocialSnapshot();
-      var lift = SOC.leaderboardLift || "Bench Press";
-      var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
-      var board = leaderboardRows(lift);
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Friends & Social</div>';
-      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Track your crew, share sessions, and compare PRs + volume.</div>';
-      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
-      h += '<div class="meas-item"><div class="meas-val">'+socialMe.workouts+'</div><div class="meas-lbl">My workouts</div></div>';
-      h += '<div class="meas-item"><div class="meas-val">'+socialMe.volume.toLocaleString()+'</div><div class="meas-lbl">Total volume</div></div>';
-      h += '</div>';
-      h += '<div class="row" style="gap:6px;align-items:center">';
-      h += '<input class="inp" id="social-name" placeholder="Your display name" style="flex:1" value="'+esc(SOC.profileName || "You")+'">';
-      h += '<button class="btn bs" id="save-social-name" style="padding:8px 10px">Save</button>';
-      h += '</div>';
-      h += '<div style="height:10px"></div>';
-      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend</div>';
-      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
-      h += '<input class="inp" id="friend-name" placeholder="Friend name">';
-      h += '<input class="inp" id="friend-workouts" type="number" min="0" placeholder="Workouts completed">';
-      h += '<input class="inp" id="friend-bench" type="number" min="0" placeholder="Bench e1RM">';
-      h += '<input class="inp" id="friend-squat" type="number" min="0" placeholder="Squat e1RM">';
-      h += '<input class="inp" id="friend-deadlift" type="number" min="0" placeholder="Deadlift e1RM">';
-      h += '<button class="btn bp" id="add-friend-btn">➕ Add Friend</button>';
-      h += '</div>';
-      if ((SOC.friends || []).length) {
-        h += '<div style="height:10px"></div>';
-        (SOC.friends || []).forEach(function(fr, idx){
-          h += '<div class="rec-item" style="margin-bottom:6px">';
-          h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
-          h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
-          h += '</div>';
-        });
-      }
-      h += '</div>';
-
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
-      h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
-      liftChoices.forEach(function(l){
-        h += '<button class="btn bs social-lift'+(lift===l?' on':'')+'" data-lift="'+esc(l)+'" style="padding:6px 10px;font-size:11px">'+esc(l)+'</button>';
-      });
-      h += '</div>';
-      board.forEach(function(row, i){
-        h += '<div class="rec-item" style="margin-bottom:6px;'+(row.isMe?'border:1px solid var(--bl)':'')+'">';
-        h += '<div><span style="font-weight:900">#'+(i+1)+'</span> '+esc(row.name)+(row.isMe?' <span style="font-size:10px;color:var(--bl)">(you)</span>':'')+'</div>';
-        h += '<div style="font-size:12px;font-weight:800">'+(row.score ? row.score+' e1RM' : '—')+'</div>';
-        h += '</div>';
-      });
-      h += '</div>';
-
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
-      h += '<button class="btn bs" id="share-social-summary" style="margin-bottom:8px">Share profile snapshot</button>';
-      if (!(SOC.feed || []).length) {
-        h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout to start the feed.</div>';
-      } else {
-        (SOC.feed || []).slice(0, 12).forEach(function(item){
-          h += '<div class="card" style="margin-bottom:6px;padding:10px">';
-          h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+'</div>';
-          h += '<div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div>';
-          h += '<div style="font-size:11px;margin-top:4px">'+esc(item.text || '')+'</div>';
-          h += '</div>';
-        });
-      }
-      h += '</div>';
-
-       += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">Settings</div>';
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">Settings</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Training sessions/week</div><input id="set-sess" class="inp" type="number" min="0" max="14" value="'+(USER.sessionsPerWeek||5)+'"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Steps/day</div><input id="set-steps" class="inp" type="number" min="0" max="30000" step="500" value="'+(USER.stepsPerDay||10000)+'"></div>';
@@ -1677,9 +1539,7 @@ h += '<div class="card">';
 
     var addEx = document.getElementById("add-ex-btn");
     if (addEx) addEx.onclick = openAddExerciseModal;
-    var shareWorkoutBtn = document.getElementById("share-workout-btn");
-    if (shareWorkoutBtn) shareWorkoutBtn.onclick = shareTodayWorkout;
-     
+
     document.querySelectorAll('[data-act="rm-ex"]').forEach(function(btn){
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
@@ -1781,11 +1641,11 @@ var foodSearchEl = document.getElementById("food-search");
     // Barcode scan (optional)
     var scanBtn = document.getElementById("scan-food-btn");
     if (scanBtn) scanBtn.addEventListener("click", scanFoodBarcode);
- var customFoodBtn = document.getElementById("open-custom-food-btn");
+    var customFoodBtn = document.getElementById("open-custom-food-btn");
     if (customFoodBtn) customFoodBtn.addEventListener("click", openCustomFoodModal);
     var customMealBtn = document.getElementById("open-custom-meal-btn");
     if (customMealBtn) customMealBtn.addEventListener("click", openCustomMealPresetModal);
-     
+
     document.querySelectorAll(".food-quick").forEach(function(btn){
       btn.onclick = function(){
         var nm = this.getAttribute("data-name");
@@ -1844,68 +1704,6 @@ document.querySelectorAll(".food-del").forEach(function(btn){
       };
     });
 
-      var saveSocialName = document.getElementById("save-social-name");
-    if (saveSocialName) saveSocialName.onclick = function(){
-      var name = ((document.getElementById("social-name")||{}).value || "").trim();
-      SOC.profileName = name || "You";
-      saveAll();
-      render();
-    };
-
-    var addFriendBtn = document.getElementById("add-friend-btn");
-    if (addFriendBtn) addFriendBtn.onclick = function(){
-      var name = ((document.getElementById("friend-name")||{}).value || "").trim();
-      if (!name) return alert("Enter a friend name.");
-      SOC.friends = SOC.friends || [];
-      SOC.friends.push({
-        id: socialId(),
-        name: name,
-        workouts: parseInt((document.getElementById("friend-workouts")||{}).value, 10) || 0,
-        lifts: {
-          "Bench Press": parseFloat((document.getElementById("friend-bench")||{}).value) || 0,
-          "Squat": parseFloat((document.getElementById("friend-squat")||{}).value) || 0,
-          "Deadlift": parseFloat((document.getElementById("friend-deadlift")||{}).value) || 0
-        }
-      });
-      saveAll();
-      render();
-    };
-
-    document.querySelectorAll(".social-rm").forEach(function(btn){
-      btn.onclick = function(){
-        var i = parseInt(this.getAttribute("data-i"), 10);
-        if (isNaN(i)) return;
-        SOC.friends.splice(i, 1);
-        saveAll();
-        render();
-      };
-    });
-
-    document.querySelectorAll(".social-lift").forEach(function(btn){
-      btn.onclick = function(){
-        SOC.leaderboardLift = this.getAttribute("data-lift") || "Bench Press";
-        saveAll();
-        render();
-      };
-    });
-
-    var socialShare = document.getElementById("share-social-summary");
-    if (socialShare) socialShare.onclick = function(){
-      var me = mySocialSnapshot();
-      var top = (me.prs || []).slice(0, 3).map(function(x){ return x.exercise + " " + x.e1rm; }).join(" · ");
-      SOC.feed.unshift({
-        id: socialId(),
-        from: SOC.profileName || "You",
-        type: "profile",
-        date: tod(),
-        text: "Profile snapshot: " + me.workouts + " workouts, " + me.volume + " lb volume." + (top ? " Top PRs: " + top : ""),
-        at: Date.now()
-      });
-      SOC.feed = SOC.feed.slice(0, 80);
-      saveAll();
-      render();
-    };
-
     var saveSet = document.getElementById("save-settings");
     if (saveSet) saveSet.onclick = function(){
       var sess = parseInt((document.getElementById("set-sess")||{}).value, 10);
@@ -1934,7 +1732,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
 
     var exportBtn = document.getElementById("export-btn");
     if (exportBtn) exportBtn.onclick = function(){
-      var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC };
+      var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH };
       var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -1959,8 +1757,8 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
           if (data.NLOG) NLOG = data.NLOG;
           if (data.NFOODS) NFOODS = data.NFOODS;
           if (data.USER) USER = data.USER;
+          sanitizeNutritionState();
           if (data.TH) TH = data.TH;
-           if (data.SOC) SOC = data.SOC;
           saveAll();
           alert("Imported!");
           render();
@@ -1975,7 +1773,8 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
     var resetBtn = document.getElementById("reset-btn");
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
-     W = {}; BW = {}; PR = {}; NLOG = {}; SOC = { profileName: "You", friends: [], feed: [], leaderboardLift: "Bench Press" };
+      W = {}; BW = {}; PR = {}; NLOG = {};
+      sanitizeNutritionState();
       saveAll();
       render();
     };
@@ -1986,6 +1785,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
   });
 
   applyTheme();
+  sanitizeNutritionState();
   saveAll();
   render();
 });
