@@ -66,7 +66,6 @@ document.addEventListener("DOMContentLoaded", function () {
     {t:"The last three or four reps is what makes the muscle grow.",a:"Arnold Schwarzenegger"},
     {t:"The iron never lies to you.",a:"Henry Rollins"},
     {t:"Consistency beats intensity.",a:"Unknown"}
-     {t:"You can do it, Brett!",a:"Your Friend, Will"}
   ];
 
   // -----------------------------
