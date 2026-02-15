@@ -66,10 +66,10 @@ document.addEventListener("DOMContentLoaded", function () {
     {t:"Success is the sum of small efforts, repeated day in and day out.",a:"Robert Collier"},
     {t:"The last three or four reps is what makes the muscle grow.",a:"Arnold Schwarzenegger"},
     {t:"The iron never lies to you.",a:"Henry Rollins"},
-    {t:"Consistency beats intensity.",a:"Unknown"}
-     {t:"Lightweight, baby!",a:"Ronnie Coleman"}
-   {t:"Everybody wants to be a bodybuilder, but nobody wants to lift no heavy-ass weight",a:"Ronnie Coleman"}
-    {t:""Ain't nothin' but a peanut!" ",a:"Ronnie Coleman"}
+    {t:"Consistency beats intensity.",a:"Unknown"},
+     {t:"Lightweight, baby!",a:"Ronnie Coleman"},
+   {t:"Everybody wants to be a bodybuilder, but nobody wants to lift no heavy-ass weight",a:"Ronnie Coleman"},
+    {t:""Ain't nothin' but a peanut!" ",a:"Ronnie Coleman"},
   ];
 
   // -----------------------------
