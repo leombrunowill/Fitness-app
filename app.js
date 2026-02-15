@@ -406,6 +406,8 @@ function openBarcodeScanner(){
    var BW = ld("il_bw", {});       // bodyweight by date: number
   var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
   var NLOG = ld("il_nlog", {});   // nutrition log by date
+   var RLIB = ld("il_routines", []); // saved workout routines
+  var RSCHED = ld("il_routine_sched", {}); // weekday -> routine id
   var NUPC = ld("il_nupc", {});   // barcode -> foodKey mapping
 var FOOD_SEARCH_TEXT = ld("il_food_search", "");
   // activity assumptions (used for calorie targets)
@@ -445,6 +447,8 @@ var SOC = ld("il_social", {
     sv("il_bw", BW);
     sv("il_pr", PR);
     sv("il_nlog", NLOG);
+     sv("il_routines", RLIB);
+    sv("il_routine_sched", RSCHED);
     sv("il_nfoods", NFOODS);
     sv("il_nupc", NUPC);
      sv("il_food_search", FOOD_SEARCH_TEXT);
@@ -525,6 +529,210 @@ function exerciseList(group){
     if (!NLOG[ds]) NLOG[ds] = [];
   }
 
+   var DEFAULT_ROUTINES = [
+    { id:"r_push", name:"Push Day", focus:["Chest","Shoulders","Arms"], items:[
+      { group:"Chest", exercise:"Bench Press", sets:4, reps:6, weight:0 },
+      { group:"Chest", exercise:"Incline Dumbbell Press", sets:3, reps:10, weight:0 },
+      { group:"Shoulders", exercise:"Lateral Raise", sets:3, reps:14, weight:0 },
+      { group:"Arms", exercise:"Tricep Pushdown", sets:3, reps:12, weight:0 }
+    ]},
+    { id:"r_pull", name:"Pull Day", focus:["Back","Arms"], items:[
+      { group:"Back", exercise:"Barbell Row", sets:4, reps:8, weight:0 },
+      { group:"Back", exercise:"Lat Pulldown", sets:3, reps:10, weight:0 },
+      { group:"Back", exercise:"Face Pull", sets:3, reps:15, weight:0 },
+      { group:"Arms", exercise:"Hammer Curl", sets:3, reps:12, weight:0 }
+    ]},
+    { id:"r_legs", name:"Leg Day", focus:["Legs","Core"], items:[
+      { group:"Legs", exercise:"Squat", sets:4, reps:6, weight:0 },
+      { group:"Legs", exercise:"Romanian Deadlift", sets:3, reps:8, weight:0 },
+      { group:"Legs", exercise:"Leg Press", sets:3, reps:12, weight:0 },
+      { group:"Core", exercise:"Plank", sets:3, reps:1, weight:0, sec:60 }
+    ]},
+    { id:"r_full", name:"Full Body Express", focus:["Chest","Back","Legs","Shoulders","Core"], items:[
+      { group:"Legs", exercise:"Squat", sets:3, reps:8, weight:0 },
+      { group:"Chest", exercise:"Dumbbell Bench Press", sets:3, reps:10, weight:0 },
+      { group:"Back", exercise:"Seated Cable Row", sets:3, reps:10, weight:0 },
+      { group:"Shoulders", exercise:"Overhead Press", sets:2, reps:10, weight:0 },
+      { group:"Core", exercise:"Ab Rollout", sets:3, reps:10, weight:0 }
+    ]}
+  ];
+
+  function normalizeRoutines() {
+    if (!Array.isArray(RLIB) || !RLIB.length) RLIB = DEFAULT_ROUTINES.slice();
+    RLIB = RLIB.filter(function(r){
+      return r && r.id && r.name && Array.isArray(r.items) && r.items.length;
+    }).map(function(r){
+      return {
+        id: String(r.id),
+        name: String(r.name),
+        focus: Array.isArray(r.focus) ? r.focus : [],
+        items: r.items.map(function(it){
+          return {
+            group: String(it.group || "Chest"),
+            exercise: String(it.exercise || "Bench Press"),
+            sets: Math.max(1, parseInt(it.sets, 10) || 3),
+            reps: Math.max(0, parseFloat(it.reps) || 8),
+            weight: Math.max(0, parseFloat(it.weight) || 0),
+            sec: Math.max(0, parseInt(it.sec, 10) || 0)
+          };
+        })
+      };
+    });
+    if (!RSCHED || typeof RSCHED !== "object" || Array.isArray(RSCHED)) RSCHED = {};
+  }
+
+  function applyRoutineToDate(routineId, ds) {
+    var r = null;
+    for (var i=0;i<RLIB.length;i++) if (RLIB[i].id === routineId) { r = RLIB[i]; break; }
+    if (!r) return;
+    ensureDay(ds);
+    if ((W[ds] || []).length && !confirm("Replace current workout for this day with " + r.name + "?")) return;
+    W[ds] = [];
+    r.items.forEach(function(it){
+      var sets = [];
+      for (var s=0;s<it.sets;s++) {
+        if (it.group === "Cardio") sets.push({ t: Math.max(1, +it.reps || 20), d: Math.max(0, +it.weight || 0) });
+        else if (it.sec) sets.push({ r: 1, w:0, sec: it.sec });
+        else sets.push({ r: Math.max(1, +it.reps || 8), w: Math.max(0, +it.weight || 0) });
+      }
+      W[ds].push({ group: it.group, exercise: it.exercise, sets: sets, note: "From routine: " + r.name });
+    });
+    saveAll();
+    render();
+  }
+
+  function setCountsByMuscle(days) {
+    var dates = lastNDates(days || 7);
+    var out = { Chest:0, Back:0, Legs:0, Shoulders:0, Arms:0, Core:0, Cardio:0 };
+    dates.forEach(function(d){
+      (W[d] || []).forEach(function(ex){
+        var g = ex.group || "Chest";
+        if (!out[g] && out[g] !== 0) out[g] = 0;
+        out[g] += (ex.sets || []).length;
+      });
+    });
+    return out;
+  }
+
+  function trainingStreak() {
+    var streak = 0;
+    for (var i=0;i<90;i++) {
+      var d = addDays(tod(), -i);
+      if ((W[d] || []).length) streak += 1;
+      else break;
+    }
+    return streak;
+  }
+
+  function saveDayAsRoutine(ds) {
+    var day = W[ds] || [];
+    if (!day.length) return alert("Log at least one exercise before saving a routine.");
+    var nm = prompt("Routine name?", "Custom Routine " + fmtS(ds));
+    if (!nm) return;
+    var items = [];
+    day.forEach(function(ex){
+      var sample = (ex.sets || [])[0] || {};
+      items.push({
+        group: ex.group || "Chest",
+        exercise: ex.exercise || "Exercise",
+        sets: Math.max(1, (ex.sets || []).length || 3),
+        reps: Math.max(0, +sample.r || +sample.t || 8),
+        weight: Math.max(0, +sample.w || +sample.d || 0),
+        sec: Math.max(0, +sample.sec || 0)
+      });
+    });
+    RLIB.unshift({
+      id: "r_" + Date.now(),
+      name: nm,
+      focus: items.map(function(it){ return it.group; }).filter(function(v, i, a){ return a.indexOf(v) === i; }),
+      items: items
+    });
+    saveAll();
+    render();
+  }
+
+  function openRoutineBuilder(routineId) {
+    var existing = null;
+    if (routineId) {
+      for (var i=0;i<RLIB.length;i++) if (RLIB[i].id === routineId) { existing = RLIB[i]; break; }
+    }
+    var html = '';
+    html += '<div style="padding:14px;min-width:300px;max-width:640px">';
+    html += '<div style="font-size:16px;font-weight:900;margin-bottom:8px">'+(existing ? '✏️ Edit Routine' : '➕ Create Routine')+'</div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Routine name</div><input class="inp" id="rb-name" placeholder="e.g., Upper Hypertrophy" value="'+esc(existing ? existing.name : '')+'"></div>';
+    html += '<div id="rb-items" style="margin-top:10px"></div>';
+    html += '<button class="btn bs" id="rb-add-row" style="margin-top:8px">+ Add Exercise</button>';
+    html += '<div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">';
+    html += '<button class="btn bs" id="rb-cancel">Cancel</button>';
+    html += '<button class="btn bp" id="rb-save">Save Routine</button>';
+    html += '</div></div>';
+    showModal(html);
+
+    var itemsEl = document.getElementById('rb-items');
+    function rowTemplate(it){
+      it = it || { group:'Chest', exercise:'', sets:3, reps:8, weight:0 };
+      var groups = Object.keys(EX).map(function(g){ return '<option value="'+esc(g)+'" '+(it.group===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('');
+      return '<div class="card rb-row" style="padding:8px;margin-bottom:6px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1.3fr .6fr .6fr .7fr auto;gap:6px;align-items:end">'+
+          '<div><div style="font-size:9px;color:var(--mt)">Group</div><select class="inp rb-group">'+groups+'</select></div>'+
+          '<div><div style="font-size:9px;color:var(--mt)">Exercise</div><input class="inp rb-ex" value="'+esc(it.exercise||'')+'" placeholder="Bench Press"></div>'+
+          '<div><div style="font-size:9px;color:var(--mt)">Sets</div><input class="inp rb-sets" type="number" min="1" max="12" value="'+(+it.sets||3)+'"></div>'+
+          '<div><div style="font-size:9px;color:var(--mt)">Reps</div><input class="inp rb-reps" type="number" min="0" step="0.5" value="'+(+it.reps||8)+'"></div>'+
+          '<div><div style="font-size:9px;color:var(--mt)">Wt</div><input class="inp rb-w" type="number" min="0" step="1" value="'+(+it.weight||0)+'"></div>'+
+          '<button class="del rb-del">×</button>'+
+        '</div></div>';
+    }
+
+    function addRow(it){
+      if (!itemsEl) return;
+      itemsEl.insertAdjacentHTML('beforeend', rowTemplate(it));
+      var rows = itemsEl.querySelectorAll('.rb-row');
+      var row = rows[rows.length - 1];
+      var del = row.querySelector('.rb-del');
+      if (del) del.onclick = function(){ row.remove(); };
+      var gsel = row.querySelector('.rb-group');
+      var exin = row.querySelector('.rb-ex');
+      if (gsel && exin && !exin.value) {
+        var list = exerciseList(gsel.value || 'Chest');
+        exin.value = list[0] || '';
+      }
+    }
+
+    (existing && existing.items && existing.items.length ? existing.items : [{ group:'Chest', exercise:'Bench Press', sets:3, reps:8, weight:0 }]).forEach(addRow);
+
+    var addBtn = document.getElementById('rb-add-row');
+    if (addBtn) addBtn.onclick = function(){ addRow(); };
+    var cancelBtn = document.getElementById('rb-cancel');
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    var saveBtn = document.getElementById('rb-save');
+    if (saveBtn) saveBtn.onclick = function(){
+      var nm = ((document.getElementById('rb-name') || {}).value || '').trim();
+      if (!nm) return alert('Routine name is required.');
+      var rows = Array.prototype.slice.call((itemsEl || document).querySelectorAll('.rb-row'));
+      if (!rows.length) return alert('Add at least one exercise.');
+      var items = [];
+      rows.forEach(function(row){
+        var g = ((row.querySelector('.rb-group')||{}).value || 'Chest');
+        var ex = ((row.querySelector('.rb-ex')||{}).value || '').trim();
+        var sets = Math.max(1, parseInt((row.querySelector('.rb-sets')||{}).value, 10) || 3);
+        var reps = Math.max(0, parseFloat((row.querySelector('.rb-reps')||{}).value) || 8);
+        var weight = Math.max(0, parseFloat((row.querySelector('.rb-w')||{}).value) || 0);
+        if (!ex) return;
+        items.push({ group:g, exercise:ex, sets:sets, reps:reps, weight:weight, sec:0 });
+      });
+      if (!items.length) return alert('Each row needs an exercise name.');
+      var payload = { id: existing ? existing.id : ('r_' + Date.now()), name:nm, focus:items.map(function(it){ return it.group; }).filter(function(v,i,a){ return a.indexOf(v)===i; }), items:items };
+      if (existing) {
+        RLIB = RLIB.map(function(r){ return r.id === existing.id ? payload : r; });
+      } else {
+        RLIB.unshift(payload);
+      }
+      saveAll();
+      closeModal();
+      render();
+    };
+  }
+   
   function socialId() {
     return "s_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
   }
@@ -1456,10 +1664,66 @@ h += '<div class="card">';
     }
 
     if (view === "templates") {
+       var weekDay = new Date(selDate + "T00:00:00").getDay();
+      var dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      var mSets = setCountsByMuscle(7);
+      var targets = { Chest:[10,18], Back:[12,20], Legs:[10,18], Shoulders:[8,16], Arms:[8,16], Core:[6,14], Cardio:[3,12] };
+      var workoutsDone = countWorkoutsLast7();
+      var streak = trainingStreak();
+       
       h += '<div class="sect">📁 Routines</div>';
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">Coming soon</div>';
-      h += '<div style="font-size:11px;color:var(--mt)">This clean rebuild focuses on stability + logging + nutrition. Next upgrade: routines & weekly planning.</div></div>';
-    }
+       h += '<div class="card">';
+      h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<div style="font-size:13px;font-weight:900">Preset Workout Library</div>';
+      h += '<div class="row" style="gap:6px">';
+      h += '<button class="btn bs" id="new-routine-btn" style="padding:6px 10px;font-size:11px">➕ New</button>';
+      h += '<button class="btn bs" id="save-routine-from-day" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
+      h += '</div>';
+      h += '</div>';
+      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">One tap to load proven splits inspired by top apps like Strong, Fitbod, and Nike Training Club.</div>';
+      var schedId = RSCHED[String(weekDay)] || "";
+      var schedRoutine = (RLIB || []).find(function(r){ return r.id === schedId; });
+      if (schedRoutine) h += '<div style="font-size:11px;color:var(--bl);font-weight:700;margin-bottom:8px">📅 Scheduled for '+esc(dayNames[weekDay])+': '+esc(schedRoutine.name)+'</div>';
+      (RLIB || []).forEach(function(r){
+        h += '<div class="card" style="margin-bottom:8px;padding:10px">';
+        h += '<div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">';
+        h += '<div><div style="font-size:13px;font-weight:800">'+esc(r.name)+'</div>';
+        h += '<div style="font-size:10px;color:var(--mt)">'+esc((r.focus||[]).join(' · ') || 'Full body')+' · '+r.items.length+' exercises</div></div>';
+        h += '<div class="row" style="gap:6px"><button class="btn bs routine-edit" data-id="'+esc(r.id)+'" style="padding:4px 8px;font-size:10px">Edit</button><button class="del routine-del" data-id="'+esc(r.id)+'">×</button></div>';
+        h += '</div>';
+        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">';
+        h += '<button class="btn bp routine-apply" data-id="'+esc(r.id)+'" style="padding:6px 10px;font-size:11px">Use Today</button>';
+        h += '<button class="btn bs routine-plan" data-id="'+esc(r.id)+'" style="padding:6px 10px;font-size:11px">Assign to '+esc(dayNames[weekDay])+'</button>';
+        h += '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+
+      h += '<div class="card">';
+      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🧠 Muscle Balance Intelligence (last 7 days)</div>';
+      Object.keys(targets).forEach(function(g){
+        var lo = targets[g][0], hi = targets[g][1], sets = mSets[g] || 0;
+        var pct = Math.min(100, Math.round((sets / hi) * 100));
+        var state = (sets < lo) ? 'under' : (sets > hi ? 'over' : 'balanced');
+        var color = state === 'under' ? 'var(--yl)' : (state === 'over' ? 'var(--rd)' : 'var(--gn)');
+        var tag = state === 'under' ? 'Underworked' : (state === 'over' ? 'Overworked' : 'On target');
+        h += '<div class="wt-row">';
+        h += '<div class="wt-head"><span class="wt-name">'+esc(ICO[g]+' '+g)+'</span><span class="wt-nums">'+sets+' sets (goal '+lo+'-'+hi+')</span></div>';
+        h += '<div class="wt-bar"><div class="wt-fill" style="width:'+pct+'%;background:'+color+'"></div></div>';
+        h += '<div style="font-size:10px;color:'+color+';margin-top:3px;font-weight:700">'+tag+'</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+
+      h += '<div class="card">';
+      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🚀 Top App Features</div>';
+      h += '<div class="meas-grid">';
+      h += '<div class="meas-item"><div class="meas-val">'+streak+'</div><div class="meas-lbl">Training streak</div></div>';
+      h += '<div class="meas-item"><div class="meas-val">'+workoutsDone+'/5</div><div class="meas-lbl">Weekly sessions</div></div>';
+      h += '</div>';
+      h += '<div style="font-size:11px;color:var(--mt);margin-top:8px">Features now live: preset plans, one-tap routine scheduling, streaks, progressive overload hints, social feed, meal presets, barcode scan, and auto macro targets.</div>';
+      h += '</div>';
+    }}
 
     if (view === "more") {
       h += '<div class="sect">⚡ More</div>';
@@ -1913,6 +2177,50 @@ var foodSearchEl = document.getElementById("food-search");
     if(sp) sp.onclick = function(){ saveTodayAsPreset(); };
     var sbc = document.getElementById("scan-barcode-btn");
     if(sbc) sbc.onclick = function(){ openBarcodeScanner(); };
+     
+var newRoutineBtn = document.getElementById("new-routine-btn");
+    if (newRoutineBtn) newRoutineBtn.onclick = function(){ openRoutineBuilder(); };
+
+    var saveRoutineBtn = document.getElementById("save-routine-from-day");
+    if (saveRoutineBtn) saveRoutineBtn.onclick = function(){ saveDayAsRoutine(selDate); };
+
+    document.querySelectorAll(".routine-edit").forEach(function(btn){
+      btn.onclick = function(){
+        var id = this.getAttribute("data-id");
+        if (id) openRoutineBuilder(id);
+      };
+    });
+
+    document.querySelectorAll(".routine-apply").forEach(function(btn){
+      btn.onclick = function(){
+        var id = this.getAttribute("data-id");
+        if (id) applyRoutineToDate(id, selDate);
+      };
+    });
+    document.querySelectorAll(".routine-plan").forEach(function(btn){
+      btn.onclick = function(){
+        var id = this.getAttribute("data-id");
+        if (!id) return;
+        var d = new Date(selDate + "T00:00:00").getDay();
+        RSCHED[String(d)] = id;
+        saveAll();
+        alert("Routine assigned for this weekday. Open any matching date and tap Use Today.");
+      };
+    });
+    document.querySelectorAll(".routine-del").forEach(function(btn){
+      btn.onclick = function(){
+        var id = this.getAttribute("data-id");
+        if (!id) return;
+        if ((id || "").indexOf("r_") !== 0 || id === "r_push" || id === "r_pull" || id === "r_legs" || id === "r_full") {
+          return alert("Default routines cannot be deleted.");
+        }
+        if (!confirm("Delete this routine?")) return;
+        RLIB = RLIB.filter(function(r){ return r.id !== id; });
+        Object.keys(RSCHED).forEach(function(k){ if (RSCHED[k] === id) delete RSCHED[k]; });
+        saveAll();
+        render();
+      };
+    });
 
 document.querySelectorAll(".food-del").forEach(function(btn){
       btn.onclick = function(){
@@ -2016,7 +2324,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
 
     var exportBtn = document.getElementById("export-btn");
     if (exportBtn) exportBtn.onclick = function(){
-var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC };
+var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC, RLIB:RLIB, RSCHED:RSCHED };
        var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -2044,7 +2352,10 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
           sanitizeNutritionState();
           if (data.TH) TH = data.TH;
            if (data.SOC) SOC = normalizeSOC(data.SOC);
-          saveAll();
+          if (data.RLIB) RLIB = data.RLIB;
+          if (data.RSCHED) RSCHED = data.RSCHED;
+          normalizeRoutines();
+           saveAll();
           alert("Imported!");
           render();
         } catch (e) {
@@ -2058,7 +2369,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
     var resetBtn = document.getElementById("reset-btn");
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
- W = {}; BW = {}; PR = {}; NLOG = {}; SOC = normalizeSOC();
+ W = {}; BW = {}; PR = {}; NLOG = {}; SOC = normalizeSOC(); RLIB = DEFAULT_ROUTINES.slice(); RSCHED = {};
        sanitizeNutritionState();
       saveAll();
       render();
@@ -2071,6 +2382,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
 
   applyTheme();
   sanitizeNutritionState();
-  saveAll();
+normalizeRoutines();  
+saveAll();
   render();
 });
