@@ -418,7 +418,22 @@ var FOOD_SEARCH_TEXT = ld("il_food_search", "");
     cutAggressiveness: "performance", // legacy support
     autoGoals: true
   });
-
+var SOC = ld("il_social", {
+    profileName: "You",
+    friends: [],
+    feed: [],
+    leaderboardLift: "Bench Press"
+  });
+  function normalizeSOC(s) {
+    s = s || {};
+    return {
+      profileName: String(s.profileName || "You"),
+      friends: Array.isArray(s.friends) ? s.friends : [],
+      feed: Array.isArray(s.feed) ? s.feed : [],
+      leaderboardLift: String(s.leaderboardLift || "Bench Press")
+    };
+  }
+  SOC = normalizeSOC(SOC);
    if (!USER.goalMode) USER.goalMode = "cut";
   if (!USER.goalPace) USER.goalPace = USER.cutAggressiveness || "moderate";
   function saveAll() {
@@ -434,6 +449,7 @@ var FOOD_SEARCH_TEXT = ld("il_food_search", "");
     sv("il_nupc", NUPC);
      sv("il_food_search", FOOD_SEARCH_TEXT);
     sv("il_user", USER);
+     sv("il_social", SOC);
   }
 
   // -----------------------------
@@ -505,12 +521,109 @@ function exerciseList(group){
     };
   }
   function ensureDay(ds) {
-    if (!Array.isArray(W[ds])) W[ds] = [];
-    if (!Array.isArray(NLOG[ds])) NLOG[ds] = [];
+    if (!W[ds]) W[ds] = [];
+    if (!NLOG[ds]) NLOG[ds] = [];
+  }
+
+  function socialId() {
+    return "s_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
+  }
+
+  function topPrs(limit) {
+    return Object.keys(PR || {}).map(function(k){
+      return { exercise: k, e1rm: +(PR[k] && PR[k].e1rm || 0) };
+    }).filter(function(x){ return x.e1rm > 0; })
+      .sort(function(a,b){ return b.e1rm - a.e1rm; })
+      .slice(0, limit || 3);
+  }
+
+  function dayWorkoutSummary(ds) {
+    var day = W[ds] || [];
+    var sets = 0, volume = 0, cardioMin = 0, cardioDist = 0;
+    day.forEach(function(ex){
+      (ex.sets || []).forEach(function(st){
+        var r = +st.r || 0, w = +st.w || 0;
+        var t = +st.t || 0, d = +st.d || 0;
+        sets += 1;
+        volume += (r * w);
+        cardioMin += t;
+        cardioDist += d;
+      });
+    });
+    return {
+      exercises: day.length,
+      sets: sets,
+      volume: Math.round(volume),
+      cardioMin: Math.round(cardioMin * 10) / 10,
+      cardioDist: Math.round(cardioDist * 100) / 100
+    };
+  }
+
+  function mySocialSnapshot() {
+    var allWorkoutDays = Object.keys(W || {}).filter(function(d){ return (W[d] || []).length; });
+    var allSets = 0;
+    var allVolume = 0;
+    allWorkoutDays.forEach(function(d){
+      var s = dayWorkoutSummary(d);
+      allSets += s.sets;
+      allVolume += s.volume;
+    });
+    return {
+      name: SOC.profileName || "You",
+      workouts: allWorkoutDays.length,
+      sets: allSets,
+      volume: Math.round(allVolume),
+      prs: topPrs(5)
+    };
+  }
+
+  function leaderboardRows(lift) {
+    var me = mySocialSnapshot();
+    var meLift = (PR[lift] && PR[lift].e1rm) ? +(PR[lift].e1rm) : 0;
+    var rows = [{ name: me.name, score: meLift, workouts: me.workouts, isMe: true }];
+    (SOC.friends || []).forEach(function(fr){
+      rows.push({
+        name: fr.name,
+        score: +(fr.lifts && fr.lifts[lift] || 0),
+        workouts: +(fr.workouts || 0),
+        isMe: false
+      });
+    });
+    return rows.sort(function(a,b){
+      if (b.score !== a.score) return b.score - a.score;
+      return b.workouts - a.workouts;
+    });
+  }
+
+  function shareTodayWorkout() {
+    ensureDay(selDate);
+    var s = dayWorkoutSummary(selDate);
+    if (!s.exercises) {
+      alert("Log a workout first so there is something to share.");
+      return;
+    }
+    var p = topPrs(2).map(function(x){ return x.exercise + " " + x.e1rm + " e1RM"; }).join(" · ");
+    var cardioNote = (s.cardioMin || s.cardioDist) ? (" Cardio: " + s.cardioMin + " min / " + s.cardioDist + " mi.") : "";
+    SOC.feed.unshift({
+      id: socialId(),
+      from: SOC.profileName || "You",
+      type: "workout",
+      date: selDate,
+      text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + s.volume + " lb volume)." + cardioNote + (p ? " Top PRs: " + p : ""),
+      at: Date.now()
+    });
+    SOC.feed = SOC.feed.slice(0, 80);
+    saveAll();
+    alert("Shared to your social feed.");
+  }
+
+  function isCardioEntry(ex) {
+    return !!(ex && ex.group === "Cardio");
   }
 
   function updatePRFromEntry(ds, exEntry) {
     if (!exEntry || !exEntry.exercise || !exEntry.sets) return;
+    if (isCardioEntry(exEntry)) return;
     var best = 0, bw = 0, br = 0;
     exEntry.sets.forEach(function(s){
       var est = e1rm(s.w, s.r);
@@ -1105,8 +1218,11 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
       var day = W[selDate] || [];
       h += '<div class="row" style="justify-content:space-between;margin-top:4px;align-items:center">';
       h += '<div class="sect" style="margin:0">🏋️ Today\'s Workout</div>';
+       h += '<div class="row" style="gap:6px">';
+      h += '<button class="btn bs" id="share-workout-btn" style="padding:6px 10px;font-size:11px">🤝 Share</button>';
       h += '<button class="btn bp" id="add-ex-btn" style="padding:6px 10px;font-size:11px">➕ Add</button>';
-      h += '</div><div style="height:8px"></div>';
+      h += '</div>';
+       h += '</div><div style="height:8px"></div>';
 
       if (!day.length) {
         h += '<div class="empty"><div style="font-size:40px;margin-bottom:8px">🏋️</div>No exercises logged yet.</div>';
@@ -1116,17 +1232,25 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
           h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
           h += '<div><div style="font-size:12px;color:var(--mt);font-weight:700">'+esc(ex.group)+'</div>';
           h += '<div style="font-size:15px;font-weight:900">'+esc(ex.exercise)+'</div>';
-          h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(function(s){ return (s.r||0)+'×'+((+s.w||0)>0? s.w+' lb':'BW'); }).join(" · ")+'</div></div>';
-          h += '<button class="del" data-act="rm-ex" data-i="'+idx+'">×</button>';
+h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(function(s){
+            if (isCardioEntry(ex)) return ((+s.t||0)+' min · '+(+s.d||0)+' mi');
+            return (s.r||0)+'×'+((+s.w||0)>0? s.w+' lb':'BW');
+          }).join(" · ")+'</div></div>';
+           h += '<button class="del" data-act="rm-ex" data-i="'+idx+'">×</button>';
           h += '</div>';
             h += '<div style="margin-top:8px;display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center">';
-          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">Set</div>';
-          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">Reps</div>';
-          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">Weight (lb)</div>';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Int':'Set')+'</div>';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Time (min)':'Reps')+'</div>';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Distance (mi)':'Weight (lb)')+'</div>';
           (ex.sets || []).forEach(function(st, sIdx){
             h += '<div style="font-size:11px;color:var(--mt)">#'+(sIdx+1)+'</div>';
-            h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px">';
-            h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="2.5" value="'+(+st.w||0)+'" style="padding:6px 8px">';
+            if (isCardioEntry(ex)) {
+              h += '<input class="inp" data-act="set-time" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.5" value="'+(+st.t||0)+'" style="padding:6px 8px">';
+              h += '<input class="inp" data-act="set-distance" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.05" value="'+(+st.d||0)+'" style="padding:6px 8px">';
+            } else {
+              h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px">';
+              h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="2.5" value="'+(+st.w||0)+'" style="padding:6px 8px">';
+            }
           });
           h += '</div>';
           if (ex.note) h += '<div style="margin-top:8px;font-size:11px;color:var(--mt);font-style:italic">📝 '+esc(ex.note)+'</div>';
@@ -1143,18 +1267,21 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
       } else {
         dates.slice(0, 60).forEach(function(d){
           var entries = W[d] || [];
-          var vol = 0, sets = 0;
+          var vol = 0, sets = 0, cMin = 0, cDist = 0;
           entries.forEach(function(e){
             (e.sets||[]).forEach(function(s){
               vol += (+s.r||0) * (+s.w||0);
-              sets++;
+              cMin += (+s.t||0);
+              cDist += (+s.d||0);
+               sets++;
             });
           });
           h += '<div class="card" style="margin-bottom:8px">';
           h += '<div class="row" style="justify-content:space-between;align-items:center">';
           h += '<div><div style="font-size:13px;font-weight:900">'+esc(fmtD(d))+'</div>';
-          h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises · '+sets+' sets · '+Math.round(vol).toLocaleString()+' lbs volume</div></div>';
-          h += '<button class="btn bs" data-act="jump" data-date="'+d+'" style="padding:5px 10px;font-size:10px">Open</button>';
+var cardioText = (cMin || cDist) ? (' · '+(Math.round(cMin*10)/10)+' min · '+(Math.round(cDist*100)/100)+' mi') : '';
+          h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises · '+sets+' sets · '+Math.round(vol).toLocaleString()+' lbs volume'+cardioText+'</div></div>';
+           h += '<button class="btn bs" data-act="jump" data-date="'+d+'" style="padding:5px 10px;font-size:10px">Open</button>';
           h += '</div></div>';
         });
         h += '<div style="font-size:10px;color:var(--mt);text-align:center;margin-top:10px">Showing last 60 workout days.</div>';
@@ -1337,6 +1464,69 @@ h += '<div class="card">';
     if (view === "more") {
       h += '<div class="sect">⚡ More</div>';
 
+       var socialMe = mySocialSnapshot();
+      var lift = SOC.leaderboardLift || "Bench Press";
+      var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
+      var board = leaderboardRows(lift);
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Friends & Social</div>';
+      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Track your crew, share sessions, and compare PRs + volume.</div>';
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+      h += '<div class="meas-item"><div class="meas-val">'+socialMe.workouts+'</div><div class="meas-lbl">My workouts</div></div>';
+      h += '<div class="meas-item"><div class="meas-val">'+socialMe.volume.toLocaleString()+'</div><div class="meas-lbl">Total volume</div></div>';
+      h += '</div>';
+      h += '<div class="row" style="gap:6px;align-items:center">';
+      h += '<input class="inp" id="social-name" placeholder="Your display name" style="flex:1" value="'+esc(SOC.profileName || "You")+'">';
+      h += '<button class="btn bs" id="save-social-name" style="padding:8px 10px">Save</button>';
+      h += '</div>';
+      h += '<div style="height:10px"></div>';
+      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend</div>';
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+      h += '<input class="inp" id="friend-name" placeholder="Friend name">';
+      h += '<input class="inp" id="friend-workouts" type="number" min="0" placeholder="Workouts completed">';
+      h += '<input class="inp" id="friend-bench" type="number" min="0" placeholder="Bench e1RM">';
+      h += '<input class="inp" id="friend-squat" type="number" min="0" placeholder="Squat e1RM">';
+      h += '<input class="inp" id="friend-deadlift" type="number" min="0" placeholder="Deadlift e1RM">';
+      h += '<button class="btn bp" id="add-friend-btn">➕ Add Friend</button>';
+      h += '</div>';
+      if ((SOC.friends || []).length) {
+        h += '<div style="height:10px"></div>';
+        (SOC.friends || []).forEach(function(fr, idx){
+          h += '<div class="rec-item" style="margin-bottom:6px">';
+          h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
+          h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
+          h += '</div>';
+        });
+      }
+      h += '</div>';
+
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
+      h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      liftChoices.forEach(function(l){
+        h += '<button class="btn bs social-lift'+(lift===l?' on':'')+'" data-lift="'+esc(l)+'" style="padding:6px 10px;font-size:11px">'+esc(l)+'</button>';
+      });
+      h += '</div>';
+      board.forEach(function(row, i){
+        h += '<div class="rec-item" style="margin-bottom:6px;'+(row.isMe?'border:1px solid var(--bl)':'')+'">';
+        h += '<div><span style="font-weight:900">#'+(i+1)+'</span> '+esc(row.name)+(row.isMe?' <span style="font-size:10px;color:var(--bl)">(you)</span>':'')+'</div>';
+        h += '<div style="font-size:12px;font-weight:800">'+(row.score ? row.score+' e1RM' : '—')+'</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
+      h += '<button class="btn bs" id="share-social-summary" style="margin-bottom:8px">Share profile snapshot</button>';
+      if (!(SOC.feed || []).length) {
+        h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout to start the feed.</div>';
+      } else {
+        (SOC.feed || []).slice(0, 12).forEach(function(item){
+          h += '<div class="card" style="margin-bottom:6px;padding:10px">';
+          h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+'</div>';
+          h += '<div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div>';
+          h += '<div style="font-size:11px;margin-top:4px">'+esc(item.text || '')+'</div>';
+          h += '</div>';
+        });
+      }
+      h += '</div>';
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">Settings</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Training sessions/week</div><input id="set-sess" class="inp" type="number" min="0" max="14" value="'+(USER.sessionsPerWeek||5)+'"></div>';
@@ -1407,9 +1597,9 @@ h += '<div class="card">';
     html += '</div>';
     html += '<div style="height:10px"></div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
-    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Sets</div><input class="inp" id="ae-sets" type="number" min="1" max="10" value="3"></div>';
-    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Reps</div><input class="inp" id="ae-reps" type="number" min="1" max="50" value="8"></div>';
-    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight</div><input class="inp" id="ae-w" type="number" min="0" step="5" value="0"></div>';
+    html += '<div><div id="ae-sets-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Sets</div><input class="inp" id="ae-sets" type="number" min="1" max="10" value="3"></div>';
+    html += '<div><div id="ae-metric1-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Reps</div><input class="inp" id="ae-reps" type="number" min="0" step="1" value="8"></div>';
+    html += '<div><div id="ae-metric2-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight (lb)</div><input class="inp" id="ae-w" type="number" min="0" step="5" value="0"></div>';
     html += '</div>';
 
     html += '<div style="height:10px"></div>';
@@ -1441,6 +1631,27 @@ h += '<div class="card">';
         ' · Try <strong>'+sug.opt1.w+'×'+sug.opt1.r+'</strong> or <strong>'+sug.opt2.w+'×'+sug.opt2.r+'</strong>';
     }
 
+     function syncAddModalFields() {
+      var grp = (document.getElementById("ae-group") || {}).value || "Chest";
+      var isCardio = (grp === "Cardio");
+      var l1 = document.getElementById("ae-metric1-label");
+      var l2 = document.getElementById("ae-metric2-label");
+      var setsLbl = document.getElementById("ae-sets-label");
+      var repInp = document.getElementById("ae-reps");
+      var wtInp = document.getElementById("ae-w");
+      if (setsLbl) setsLbl.textContent = isCardio ? "Intervals" : "Sets";
+      if (l1) l1.textContent = isCardio ? "Time (min)" : "Reps";
+      if (l2) l2.textContent = isCardio ? "Distance (mi)" : "Weight (lb)";
+      if (repInp) {
+        repInp.step = isCardio ? "0.5" : "1";
+        repInp.max = isCardio ? "600" : "50";
+        if (isCardio && (!repInp.value || +repInp.value === 8)) repInp.value = "20";
+      }
+      if (wtInp) {
+        wtInp.step = isCardio ? "0.05" : "5";
+        if (isCardio && (!wtInp.value || +wtInp.value === 0)) wtInp.value = "2";
+      }
+    }
 
     function fillExercises(group) {
       var exSel = document.getElementById("ae-ex");
@@ -1452,8 +1663,9 @@ h += '<div class="card">';
     var gSel = document.getElementById("ae-group");
     if (gSel) {
       fillExercises(gSel.value);
-    updateHint();
-     gSel.addEventListener("change", function(){ fillExercises(this.value); updateHint(); });
+    syncAddModalFields();
+      updateHint();
+     gSel.addEventListener("change", function(){ fillExercises(this.value); syncAddModalFields(); updateHint(); });
     }
  var customAdd = document.getElementById("ae-custom-add");
     if (customAdd) customAdd.addEventListener("click", function(){
@@ -1482,13 +1694,17 @@ h += '<div class="card">';
       var grp = (document.getElementById("ae-group") || {}).value || "Chest";
       var ex = (document.getElementById("ae-ex") || {}).value || "Bench Press";
       var setsN = parseInt((document.getElementById("ae-sets") || {}).value, 10) || 3;
-      var reps = parseInt((document.getElementById("ae-reps") || {}).value, 10) || 8;
+      var isCardio = (grp === "Cardio");
+      var reps = parseFloat((document.getElementById("ae-reps") || {}).value) || (isCardio ? 20 : 8);
       var wt = parseFloat((document.getElementById("ae-w") || {}).value) || 0;
       var note = ((document.getElementById("ae-note") || {}).value || "").trim();
 
       ensureDay(selDate);
       var entry = { group: grp, exercise: ex, sets: [], note: note };
-      for (var i=0;i<setsN;i++) entry.sets.push({ r: reps, w: wt });
+     for (var i=0;i<setsN;i++) {
+        if (isCardio) entry.sets.push({ t: Math.max(0, Math.round(reps * 10) / 10), d: Math.max(0, Math.round(wt * 100) / 100) });
+        else entry.sets.push({ r: Math.max(0, Math.round(reps)), w: Math.max(0, Math.round(wt * 10) / 10) });
+      }
 
       W[selDate].push(entry);
       updatePRFromEntry(selDate, entry);
@@ -1539,7 +1755,9 @@ h += '<div class="card">';
 
     var addEx = document.getElementById("add-ex-btn");
     if (addEx) addEx.onclick = openAddExerciseModal;
-
+var shareWorkoutBtn = document.getElementById("share-workout-btn");
+    if (shareWorkoutBtn) shareWorkoutBtn.onclick = shareTodayWorkout;
+     
     document.querySelectorAll('[data-act="rm-ex"]').forEach(function(btn){
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
@@ -1550,8 +1768,8 @@ h += '<div class="card">';
         render();
       };
     });
- document.querySelectorAll('[data-act="set-reps"], [data-act="set-weight"]').forEach(function(inp){
-      inp.onchange = function(){
+ document.querySelectorAll('[data-act="set-reps"], [data-act="set-weight"], [data-act="set-time"], [data-act="set-distance"]').forEach(function(inp){
+    inp.onchange = function(){
         var exIdx = parseInt(this.getAttribute("data-i"), 10);
         var setIdx = parseInt(this.getAttribute("data-s"), 10);
         if (isNaN(exIdx) || isNaN(setIdx)) return;
@@ -1559,8 +1777,11 @@ h += '<div class="card">';
         var ex = day[exIdx];
         if (!ex || !ex.sets || !ex.sets[setIdx]) return;
         var v = parseFloat(this.value) || 0;
-        if (this.getAttribute("data-act") === "set-reps") ex.sets[setIdx].r = Math.max(0, Math.round(v));
-        else ex.sets[setIdx].w = Math.max(0, Math.round(v * 10) / 10);
+        var act = this.getAttribute("data-act");
+        if (act === "set-reps") ex.sets[setIdx].r = Math.max(0, Math.round(v));
+        else if (act === "set-weight") ex.sets[setIdx].w = Math.max(0, Math.round(v * 10) / 10);
+        else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) / 10);
+        else if (act === "set-distance") ex.sets[setIdx].d = Math.max(0, Math.round(v * 100) / 100);
         updatePRFromEntry(selDate, ex);
         saveAll();
         render();
@@ -1703,7 +1924,70 @@ document.querySelectorAll(".food-del").forEach(function(btn){
         render();
       };
     });
+var saveSocialName = document.getElementById("save-social-name");
+    if (saveSocialName) saveSocialName.onclick = function(){
+      var name = ((document.getElementById("social-name")||{}).value || "").trim();
+      SOC.profileName = name || "You";
+      saveAll();
+      render();
+    };
 
+    var addFriendBtn = document.getElementById("add-friend-btn");
+    if (addFriendBtn) addFriendBtn.onclick = function(){
+      var name = ((document.getElementById("friend-name")||{}).value || "").trim();
+      if (!name) return alert("Enter a friend name.");
+      SOC.friends = SOC.friends || [];
+      var dupe = SOC.friends.some(function(f){ return String(f.name || "").toLowerCase() === name.toLowerCase(); });
+      if (dupe) return alert("That friend already exists.");
+      SOC.friends.push({
+        id: socialId(),
+        name: name,
+        workouts: parseInt((document.getElementById("friend-workouts")||{}).value, 10) || 0,
+        lifts: {
+          "Bench Press": parseFloat((document.getElementById("friend-bench")||{}).value) || 0,
+          "Squat": parseFloat((document.getElementById("friend-squat")||{}).value) || 0,
+          "Deadlift": parseFloat((document.getElementById("friend-deadlift")||{}).value) || 0
+        }
+      });
+      saveAll();
+      render();
+    };
+
+    document.querySelectorAll(".social-rm").forEach(function(btn){
+      btn.onclick = function(){
+        var i = parseInt(this.getAttribute("data-i"), 10);
+        if (isNaN(i)) return;
+        SOC.friends.splice(i, 1);
+        saveAll();
+        render();
+      };
+    });
+
+    document.querySelectorAll(".social-lift").forEach(function(btn){
+      btn.onclick = function(){
+        SOC.leaderboardLift = this.getAttribute("data-lift") || "Bench Press";
+        saveAll();
+        render();
+      };
+    });
+
+    var socialShare = document.getElementById("share-social-summary");
+    if (socialShare) socialShare.onclick = function(){
+      var me = mySocialSnapshot();
+      var top = (me.prs || []).slice(0, 3).map(function(x){ return x.exercise + " " + x.e1rm; }).join(" · ");
+      SOC.feed.unshift({
+        id: socialId(),
+        from: SOC.profileName || "You",
+        type: "profile",
+        date: tod(),
+        text: "Profile snapshot: " + me.workouts + " workouts, " + me.volume + " lb volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : ""),
+        at: Date.now()
+      });
+      SOC.feed = SOC.feed.slice(0, 80);
+      saveAll();
+      render();
+    };
+     
     var saveSet = document.getElementById("save-settings");
     if (saveSet) saveSet.onclick = function(){
       var sess = parseInt((document.getElementById("set-sess")||{}).value, 10);
@@ -1732,8 +2016,8 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
 
     var exportBtn = document.getElementById("export-btn");
     if (exportBtn) exportBtn.onclick = function(){
-      var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH };
-      var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC };
+       var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "ironlog_backup.json";
@@ -1759,6 +2043,7 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
           if (data.USER) USER = data.USER;
           sanitizeNutritionState();
           if (data.TH) TH = data.TH;
+           if (data.SOC) SOC = normalizeSOC(data.SOC);
           saveAll();
           alert("Imported!");
           render();
@@ -1773,8 +2058,8 @@ USER.goalPace = this.getAttribute("data-v") || "moderate";
     var resetBtn = document.getElementById("reset-btn");
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
-      W = {}; BW = {}; PR = {}; NLOG = {};
-      sanitizeNutritionState();
+ W = {}; BW = {}; PR = {}; NLOG = {}; SOC = normalizeSOC();
+       sanitizeNutritionState();
       saveAll();
       render();
     };
