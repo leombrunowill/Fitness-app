@@ -986,16 +986,35 @@ text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + Math.roun
     return calcItem(food, grams, servings);
   }
 
+   function baseServingToGrams(amount, unit) {
+    var u = normalizeNutritionUnit(unit);
+    var val = +amount || 0;
+    if (u === "ounces") return val * 28.3495;
+    if (u === "bottles") return val;
+    return val;
+  }
+
+  function customServingLabel(amount, unit) {
+    var u = normalizeNutritionUnit(unit);
+    var val = round1(+amount || 0);
+    if (u === "ounces") return val + " oz";
+    if (u === "bottles") return val + (val === 1 ? " bottle" : " bottles");
+    return val + " g";
+  }
+   
   function saveCustomFood(def) {
     var name = String(def.name || "").trim();
-    var servingGrams = +def.servingGrams || 0;
-    var cal = +def.cal || 0;
+var servingUnit = normalizeNutritionUnit(def.servingUnit || "grams");
+    var servingAmount = +def.servingAmount || 0;
+    var servingGrams = baseServingToGrams(servingAmount, servingUnit);
+     var cal = +def.cal || 0;
     var p = +def.p || 0;
     var c = +def.c || 0;
     var f = +def.f || 0;
     if (!name) return { ok:false, msg:"Food name is required." };
-    if (!servingGrams || servingGrams <= 0) return { ok:false, msg:"Serving grams must be greater than 0." };
-    if (cal < 0 || p < 0 || c < 0 || f < 0) return { ok:false, msg:"Macros cannot be negative." };
+if (!servingAmount || servingAmount <= 0) return { ok:false, msg:"Base serving amount must be greater than 0." };
+    if (!servingGrams || servingGrams <= 0) return { ok:false, msg:"Base serving must be greater than 0." };
+     if (cal < 0 || p < 0 || c < 0 || f < 0) return { ok:false, msg:"Macros cannot be negative." };
     var per100Factor = 100 / servingGrams;
     var key = foodKey(name);
     NFOODS[key] = {
@@ -1006,10 +1025,10 @@ text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + Math.roun
         c: round1(c * per100Factor),
         f: round1(f * per100Factor)
       },
-      serving: { label: Math.round(servingGrams) + " g", grams: Math.round(servingGrams) },
-      custom: true
+serving: { label: customServingLabel(servingAmount, servingUnit), grams: Math.round(servingGrams) },
+       custom: true
     };
-    return { ok:true, key:key, food:NFOODS[key] };
+ return { ok:true, key:key, food:NFOODS[key], servingGrams: servingGrams };
   }
 
   function openCustomFoodModal() {
@@ -1019,8 +1038,9 @@ text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + Math.roun
     html += '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Enter macros for one serving. This food is saved for reuse.</div>';
     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Food name</div><input class="inp" id="cf-name" placeholder="e.g., Homemade Turkey Chili"></div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">';
-    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Serving grams</div><input class="inp" id="cf-serv-g" type="number" min="1" step="1" value="100"></div>';
-    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Calories</div><input class="inp" id="cf-cal" type="number" min="0" step="1" value="0"></div>';
+html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Base serving amount</div><input class="inp" id="cf-serv-amt" type="number" min="0.1" step="0.1" value="100"></div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Base serving unit</div><select class="inp" id="cf-serv-unit"><option value="grams">grams</option><option value="ounces">ounces</option><option value="bottles">bottles</option></select></div>';
+     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Calories</div><input class="inp" id="cf-cal" type="number" min="0" step="1" value="0"></div>';
     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Protein (g)</div><input class="inp" id="cf-p" type="number" min="0" step="0.1" value="0"></div>';
     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Carbs (g)</div><input class="inp" id="cf-c" type="number" min="0" step="0.1" value="0"></div>';
     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Fat (g)</div><input class="inp" id="cf-f" type="number" min="0" step="0.1" value="0"></div>';
@@ -1032,14 +1052,37 @@ text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + Math.roun
     html += '</div></div>';
     showModal(html);
 
+     var servingUnitEl = document.getElementById("cf-serv-unit");
+    var servingAmtEl = document.getElementById("cf-serv-amt");
+    function syncServingAmountInput() {
+      if (!servingUnitEl || !servingAmtEl) return;
+      if (servingUnitEl.value === "bottles") {
+        servingAmtEl.value = servingAmtEl.value ? servingAmtEl.value : "1";
+        servingAmtEl.min = "0.1";
+        servingAmtEl.step = "0.1";
+      } else if (servingUnitEl.value === "ounces") {
+        servingAmtEl.min = "0.1";
+        servingAmtEl.step = "0.1";
+      } else {
+        servingAmtEl.min = "1";
+        servingAmtEl.step = "1";
+      }
+    }
+    if (servingUnitEl) {
+      servingUnitEl.value = "grams";
+      servingUnitEl.onchange = syncServingAmountInput;
+    }
+    syncServingAmountInput();
+     
     var cancelBtn = document.getElementById("cf-cancel");
     if (cancelBtn) cancelBtn.onclick = closeModal;
     var saveBtn = document.getElementById("cf-save");
     if (saveBtn) saveBtn.onclick = function(){
       var payload = {
         name: (document.getElementById("cf-name") || {}).value || "",
-        servingGrams: parseFloat((document.getElementById("cf-serv-g") || {}).value) || 0,
-        cal: parseFloat((document.getElementById("cf-cal") || {}).value) || 0,
+servingAmount: parseFloat((document.getElementById("cf-serv-amt") || {}).value) || 0,
+        servingUnit: ((document.getElementById("cf-serv-unit") || {}).value) || "grams",
+         cal: parseFloat((document.getElementById("cf-cal") || {}).value) || 0,
         p: parseFloat((document.getElementById("cf-p") || {}).value) || 0,
         c: parseFloat((document.getElementById("cf-c") || {}).value) || 0,
         f: parseFloat((document.getElementById("cf-f") || {}).value) || 0
@@ -1050,7 +1093,7 @@ text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + Math.roun
       if ((document.getElementById("cf-add-today") || {}).checked) {
         ensureDay(selDate);
         var calc = calcItem(res.food, payload.servingGrams, 1);
-        if (calc) {
+         if (calc) {
           NLOG[selDate].push({
             id: uid(),
             name: res.food.name,
