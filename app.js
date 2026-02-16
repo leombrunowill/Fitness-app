@@ -405,7 +405,10 @@ function openBarcodeScanner(){
   var authReady = false;
   var authBusy = false;
   var authMsg = "";
-
+var cloudSyncEnabled = true;
+  var cloudSaveTimer = null;
+  var cloudHydrating = false;
+   
   function initAuth() {
     if (!window.supabase) {
       authMsg = "Supabase SDK not loaded.";
@@ -423,7 +426,11 @@ function openBarcodeScanner(){
       sb.auth.getSession().then(function(res) {
         authSession = (res && res.data && res.data.session) ? res.data.session : null;
         authReady = true;
-        render();
+if (authSession && authSession.user) {
+          cloudLoad().finally(function(){ render(); });
+        } else {
+          render();
+        }
       }).catch(function(err) {
         authMsg = "Session check failed: " + (err && err.message ? err.message : "Unknown error");
         authReady = true;
@@ -433,7 +440,11 @@ function openBarcodeScanner(){
       sb.auth.onAuthStateChange(function(_event, session) {
         authSession = session || null;
         if (authSession) authMsg = "";
-        render();
+if (authSession && authSession.user) {
+          cloudLoad().finally(function(){ render(); });
+        } else {
+          render();
+        }
       });
     } catch (e) {
       authMsg = "Auth initialization failed.";
@@ -599,6 +610,95 @@ function normalizeWeightUnit(unit) {
     sv("il_nupc", NUPC);
     sv("il_user", USER);
      sv("il_social", SOC);
+     if (authSession && authSession.user) {
+      scheduleCloudUpsert();
+    }
+  }
+
+  function buildCloudPayload() {
+    return {
+      user_id: authSession && authSession.user ? authSession.user.id : null,
+      w: W || {},
+      bw: BW || {},
+      pr: PR || {},
+      nlog: NLOG || {},
+      nfoods: NFOODS || {},
+      user_settings: USER || {},
+      th: TH || "dark",
+      soc: SOC || {},
+      rlib: RLIB || [],
+      rsched: RSCHED || {},
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  function applyCloudState(row) {
+    if (!row || typeof row !== "object") return;
+    cloudHydrating = true;
+    try {
+      W = row.w || {};
+      BW = row.bw || {};
+      PR = row.pr || {};
+      NLOG = row.nlog || {};
+      NFOODS = row.nfoods || {};
+      USER = normalizeUSER(row.user_settings || {});
+      TH = row.th || "dark";
+      SOC = normalizeSOC(row.soc || {});
+      RLIB = Array.isArray(row.rlib) ? row.rlib : [];
+      RSCHED = row.rsched || {};
+      sanitizeNutritionState();
+      normalizeRoutines();
+      syncProgressPRFilter();
+      saveAll();
+    } finally {
+      cloudHydrating = false;
+    }
+  }
+
+  function cloudUpsertNow() {
+    if (!cloudSyncEnabled || cloudHydrating) return Promise.resolve();
+    if (!sb || !authSession || !authSession.user) return Promise.resolve();
+    var payload = buildCloudPayload();
+    if (!payload.user_id) return Promise.resolve();
+
+    return sb.from("app_state")
+      .upsert(payload, { onConflict: "user_id" })
+      .then(function(res) {
+        if (res && res.error) throw res.error;
+      })
+      .catch(function(err) {
+        authMsg = "Cloud save failed: " + ((err && err.message) ? err.message : "Unknown error");
+        render();
+      });
+  }
+
+  function scheduleCloudUpsert() {
+    if (!cloudSyncEnabled || cloudHydrating) return;
+    if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(function() {
+      cloudUpsertNow();
+    }, 500);
+  }
+
+  function cloudLoad() {
+    if (!cloudSyncEnabled) return Promise.resolve();
+    if (!sb || !authSession || !authSession.user) return Promise.resolve();
+    return sb.from("app_state")
+      .select("*")
+      .eq("user_id", authSession.user.id)
+      .maybeSingle()
+      .then(function(res) {
+        if (res && res.error) throw res.error;
+        if (res && res.data) {
+          applyCloudState(res.data);
+          return;
+        }
+        return cloudUpsertNow();
+      })
+      .catch(function(err) {
+        authMsg = "Cloud load failed: " + ((err && err.message) ? err.message : "Unknown error");
+        render();
+      });
   }
 
    function syncProgressPRFilter() {
