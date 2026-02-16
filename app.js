@@ -511,6 +511,18 @@ function exerciseList(group){
     return null;
   }
 
+   function lastExerciseSession(exName) {
+    var dates = Object.keys(W).sort().reverse();
+    for (var di = 0; di < dates.length; di++) {
+      var d = dates[di], day = W[d] || [];
+      for (var ei = day.length - 1; ei >= 0; ei--) {
+        var e = day[ei];
+        if (e && e.exercise === exName && e.sets && e.sets.length) return { date: d, entry: e };
+      }
+    }
+    return null;
+  }
+
   function overloadSuggestion(exName){
     var p = lastExercisePerf(exName);
     if(!p) return null;
@@ -1440,11 +1452,16 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
           h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
           h += '<div><div style="font-size:12px;color:var(--mt);font-weight:700">'+esc(ex.group)+'</div>';
           h += '<div style="font-size:15px;font-weight:900">'+esc(ex.exercise)+'</div>';
+           if (ex.setStyle && ex.setStyle !== "standard") h += '<div style="font-size:10px;color:var(--bl);font-weight:800;margin-top:2px">'+esc(ex.setStyle === 'drop' ? 'Drop Set' : 'Super Set')+'</div>';
 h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(function(s){
             if (isCardioEntry(ex)) return ((+s.t||0)+' min · '+(+s.d||0)+' mi');
             return (s.r||0)+'×'+((+s.w||0)>0? s.w+' lb':'BW');
           }).join(" · ")+'</div></div>';
            h += '<button class="del" data-act="rm-ex" data-i="'+idx+'">×</button>';
+            h += '</div>';
+          h += '<div class="row" style="gap:8px;align-items:center;margin-top:8px">';
+          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Intervals':'Sets')+'</div>';
+          h += '<input class="inp" data-act="set-count" data-i="'+idx+'" type="number" min="1" max="20" value="'+((ex.sets||[]).length||1)+'" style="width:88px;padding:6px 8px">';
           h += '</div>';
             h += '<div style="margin-top:8px;display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center">';
           h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Int':'Set')+'</div>';
@@ -1457,7 +1474,7 @@ h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(f
               h += '<input class="inp" data-act="set-distance" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.05" value="'+(+st.d||0)+'" style="padding:6px 8px">';
             } else {
               h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px">';
-              h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="2.5" value="'+(+st.w||0)+'" style="padding:6px 8px">';
+h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="2.5" value="'+((+st.w||0)>0?(+st.w||0):'')+'" style="padding:6px 8px" placeholder="BW">';
             }
           });
           h += '</div>';
@@ -1863,10 +1880,15 @@ h += '<div class="card">';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
     html += '<div><div id="ae-sets-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Sets</div><input class="inp" id="ae-sets" type="number" min="1" max="10" value="3"></div>';
     html += '<div><div id="ae-metric1-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Reps</div><input class="inp" id="ae-reps" type="number" min="0" step="1" value="8"></div>';
-    html += '<div><div id="ae-metric2-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight (lb)</div><input class="inp" id="ae-w" type="number" min="0" step="5" value="0"></div>';
-    html += '</div>';
+  html += '<div><div id="ae-metric2-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight (lb)</div><input class="inp" id="ae-w" type="number" min="0" step="5" placeholder="optional"></div>';
+     html += '</div>';
 
-    html += '<div style="height:10px"></div>';
+     html += '<div style="height:10px"></div>';
+    html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Set Type</div><select class="inp" id="ae-set-style"><option value="standard">Standard Sets</option><option value="drop">Drop Set</option><option value="super">Super Set</option></select></div>';
+
+    html += '<div id="ae-last-session" class="card" style="margin-top:10px;display:none;padding:8px"></div>';
+
+     html += '<div style="height:10px"></div>';
     html += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Note (optional)</div><textarea class="txta" id="ae-note" placeholder="e.g., RPE 8, paused reps..."></textarea></div>';
 
     html += '<div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">';
@@ -1879,6 +1901,7 @@ h += '<div class="card">';
     showModal(html);
 
     var hintEl = document.getElementById("ae-hint");
+      var lastSessionEl = document.getElementById("ae-last-session");
     function updateHint(){
       if(!hintEl) return;
       var exSel2 = document.getElementById("ae-ex");
@@ -1895,6 +1918,26 @@ h += '<div class="card">';
         ' · Try <strong>'+sug.opt1.w+'×'+sug.opt1.r+'</strong> or <strong>'+sug.opt2.w+'×'+sug.opt2.r+'</strong>';
     }
 
+      function updateLastSessionHint() {
+      if (!lastSessionEl) return;
+      var exSel2 = document.getElementById("ae-ex");
+      var exName = exSel2 ? exSel2.value : "";
+      var last = lastExerciseSession(exName);
+      if (!last || !last.entry) {
+        lastSessionEl.style.display = "none";
+        lastSessionEl.innerHTML = "";
+        return;
+      }
+      var styleName = (last.entry.setStyle === "drop") ? "Drop Set" : (last.entry.setStyle === "super" ? "Super Set" : "Standard");
+      var setLines = (last.entry.sets || []).map(function(s, i){
+        if (isCardioEntry(last.entry)) return '#'+(i+1)+' '+((+s.t||0)+' min · '+(+s.d||0)+' mi');
+        return '#'+(i+1)+' '+(+s.r||0)+' reps @ '+((+s.w||0)>0 ? (s.w+' lb') : 'BW');
+      }).join(' · ');
+      lastSessionEl.style.display = "block";
+      lastSessionEl.innerHTML = '<div style="font-size:10px;color:var(--mt);font-weight:700">Last time for this exercise</div>'+
+        '<div style="font-size:11px;font-weight:800;margin-top:2px">'+esc(fmtD(last.date))+' · '+styleName+'</div>'+
+        '<div style="font-size:11px;color:var(--mt);margin-top:3px">'+esc(setLines)+'</div>';
+    }
      function syncAddModalFields() {
       var grp = (document.getElementById("ae-group") || {}).value || "Chest";
       var isCardio = (grp === "Cardio");
@@ -1914,6 +1957,7 @@ h += '<div class="card">';
       if (wtInp) {
         wtInp.step = isCardio ? "0.05" : "5";
         if (isCardio && (!wtInp.value || +wtInp.value === 0)) wtInp.value = "2";
+         if (!isCardio && +wtInp.value === 0) wtInp.value = "";
       }
     }
 
@@ -1930,6 +1974,8 @@ h += '<div class="card">';
     syncAddModalFields();
       updateHint();
      gSel.addEventListener("change", function(){ fillExercises(this.value); syncAddModalFields(); updateHint(); });
+       updateLastSessionHint();
+     gSel.addEventListener("change", function(){ fillExercises(this.value); syncAddModalFields(); updateHint(); updateLastSessionHint(); });
     }
  var customAdd = document.getElementById("ae-custom-add");
     if (customAdd) customAdd.addEventListener("click", function(){
@@ -1945,11 +1991,13 @@ h += '<div class="card">';
       document.getElementById("ae-custom").value = "";
       saveAll();
       updateHint();
+       updateLastSessionHint();
     });
 
     var exSel = document.getElementById("ae-ex");
-    if (exSel) exSel.addEventListener("change", updateHint);
-
+ if (exSel) exSel.addEventListener("change", function(){ updateHint(); updateLastSessionHint(); });
+    updateLastSessionHint();
+     
     var cancel = document.getElementById("ae-cancel");
     if (cancel) cancel.addEventListener("click", closeModal);
 
@@ -1961,11 +2009,12 @@ h += '<div class="card">';
       var isCardio = (grp === "Cardio");
       var reps = parseFloat((document.getElementById("ae-reps") || {}).value) || (isCardio ? 20 : 8);
       var wt = parseFloat((document.getElementById("ae-w") || {}).value) || 0;
+             var setStyle = (document.getElementById("ae-set-style") || {}).value || "standard";
       var note = ((document.getElementById("ae-note") || {}).value || "").trim();
 
       ensureDay(selDate);
-      var entry = { group: grp, exercise: ex, sets: [], note: note };
-     for (var i=0;i<setsN;i++) {
+var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle };
+       for (var i=0;i<setsN;i++) {
         if (isCardio) entry.sets.push({ t: Math.max(0, Math.round(reps * 10) / 10), d: Math.max(0, Math.round(wt * 100) / 100) });
         else entry.sets.push({ r: Math.max(0, Math.round(reps)), w: Math.max(0, Math.round(wt * 10) / 10) });
       }
@@ -2032,16 +2081,37 @@ var shareWorkoutBtn = document.getElementById("share-workout-btn");
         render();
       };
     });
- document.querySelectorAll('[data-act="set-reps"], [data-act="set-weight"], [data-act="set-time"], [data-act="set-distance"]').forEach(function(inp){
+ document.querySelectorAll('[data-act="set-reps"], [data-act="set-weight"], [data-act="set-time"], [data-act="set-distance"], [data-act="set-count"]').forEach(function(inp){
     inp.onchange = function(){
         var exIdx = parseInt(this.getAttribute("data-i"), 10);
         var setIdx = parseInt(this.getAttribute("data-s"), 10);
-        if (isNaN(exIdx) || isNaN(setIdx)) return;
-        var day = W[selDate] || [];
+var act = this.getAttribute("data-act");
+        if (isNaN(exIdx)) return;
+       var day = W[selDate] || [];
         var ex = day[exIdx];
-        if (!ex || !ex.sets || !ex.sets[setIdx]) return;
-        var v = parseFloat(this.value) || 0;
-        var act = this.getAttribute("data-act");
+if (!ex || !ex.sets) return;
+
+        if (act === "set-count") {
+          var newCount = Math.max(1, Math.min(20, parseInt(this.value, 10) || 1));
+          var curCount = ex.sets.length || 0;
+          if (newCount > curCount) {
+            var isCardio = isCardioEntry(ex);
+            var seed = ex.sets[curCount - 1] || (isCardio ? { t: 20, d: 0 } : { r: 8, w: 0 });
+            while (ex.sets.length < newCount) {
+              ex.sets.push(isCardio ? { t: +seed.t || 0, d: +seed.d || 0 } : { r: +seed.r || 0, w: +seed.w || 0 });
+            }
+          } else if (newCount < curCount) {
+            ex.sets = ex.sets.slice(0, newCount);
+          }
+          this.value = String(newCount);
+          updatePRFromEntry(selDate, ex);
+          saveAll();
+          render();
+          return;
+        }
+
+        if (isNaN(setIdx) || !ex.sets[setIdx]) return;
+       var v = parseFloat(this.value) || 0;
         if (act === "set-reps") ex.sets[setIdx].r = Math.max(0, Math.round(v));
         else if (act === "set-weight") ex.sets[setIdx].w = Math.max(0, Math.round(v * 10) / 10);
         else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) / 10);
