@@ -531,7 +531,49 @@ function normalizeWeightUnit(unit) {
     return Math.round(w * (1 + r / 30));
   }
 
-function exerciseList(group){
+function buildPRTrendData(exerciseNames) {
+    var selected = (exerciseNames || []).filter(function(n){ return !!n; });
+    var dates = Object.keys(W || {}).sort();
+    if (!selected.length || !dates.length) return { labels: [], series: [] };
+
+    var selectedSet = {};
+    selected.forEach(function(n){ selectedSet[n] = true; });
+
+    var labels = [];
+    var rollingBest = {};
+    var seriesMap = {};
+    selected.forEach(function(n){ seriesMap[n] = []; rollingBest[n] = 0; });
+
+    dates.forEach(function(d){
+      labels.push(fmtS(d));
+      var day = W[d] || [];
+      var dailyBest = {};
+
+      day.forEach(function(entry){
+        if (!entry || !selectedSet[entry.exercise]) return;
+        (entry.sets || []).forEach(function(st){
+          var est = e1rm(st && st.w, st && st.r);
+          if (!est) return;
+          if (!dailyBest[entry.exercise] || est > dailyBest[entry.exercise]) dailyBest[entry.exercise] = est;
+        });
+      });
+
+      selected.forEach(function(name){
+        if (dailyBest[name] && dailyBest[name] > (rollingBest[name] || 0)) rollingBest[name] = dailyBest[name];
+        seriesMap[name].push(rollingBest[name] > 0 ? toDisplayWeight(rollingBest[name]) : null);
+      });
+    });
+
+    var series = selected.map(function(name){
+      var vals = seriesMap[name];
+      var hasValue = vals.some(function(v){ return v !== null; });
+      return hasValue ? { name: name, values: vals } : null;
+    }).filter(Boolean);
+
+    return { labels: labels, series: series };
+  }
+
+   function exerciseList(group){
     var base = EX[group] || [];
     var custom = CEX[group] || [];
     var seen = {};
@@ -1348,6 +1390,88 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
     }, 50);
   }
 
+   function drawMultiChart(id, labels, series) {
+    setTimeout(function(){
+      var cv = document.getElementById(id);
+      if (!cv) return;
+      var ctx = cv.getContext("2d");
+      var dpr = window.devicePixelRatio || 1;
+      var r = cv.getBoundingClientRect();
+      cv.width = r.width * dpr;
+      cv.height = r.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      var Ww = r.width, Hh = r.height;
+      ctx.clearRect(0,0,Ww,Hh);
+
+      var bg = TH === "dark" ? "#0a0f1a" : "#f9fafb";
+      var grid = TH === "dark" ? "#1f2937" : "#d1d5db";
+      var txt = TH === "dark" ? "#9ca3af" : "#6b7280";
+      var lineColors = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#22d3ee", "#f97316"];
+
+      ctx.fillStyle = bg;
+      ctx.fillRect(0,0,Ww,Hh);
+
+      var p = {t: 14, r: 12, b: 28, l: 40};
+      var cw = Ww - p.l - p.r;
+      var ch = Hh - p.t - p.b;
+
+      var flatValues = [];
+      (series || []).forEach(function(s){
+        (s.values || []).forEach(function(v){ if (v !== null && !isNaN(v)) flatValues.push(+v); });
+      });
+      if (!flatValues.length || !labels.length) return;
+
+      var mn = Math.min.apply(null, flatValues);
+      var mx = Math.max.apply(null, flatValues);
+      if (mn === mx) { mn -= 1; mx += 1; }
+      var pad = (mx - mn) * 0.1;
+      mn -= pad; mx += pad;
+
+      ctx.strokeStyle = grid;
+      ctx.lineWidth = 1;
+      for (var i=0;i<=4;i++) {
+        var y = p.t + ch - (i/4)*ch;
+        ctx.beginPath();
+        ctx.moveTo(p.l, y);
+        ctx.lineTo(Ww - p.r, y);
+        ctx.stroke();
+        ctx.fillStyle = txt;
+        ctx.font = "10px -apple-system,sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText(String(Math.round(mn + (mx-mn)*i/4)), p.l - 6, y + 3);
+      }
+
+      (series || []).forEach(function(s, si){
+        var color = lineColors[si % lineColors.length];
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.2;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+
+        var started = false;
+        (s.values || []).forEach(function(v, i){
+          if (v === null || isNaN(v)) { started = false; return; }
+          var x = p.l + (i / Math.max(labels.length-1,1))*cw;
+          var y = p.t + ch - ((v - mn) / (mx - mn))*ch;
+          if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+        });
+
+        if (started) ctx.stroke();
+      });
+
+      ctx.fillStyle = txt;
+      ctx.font = "9px -apple-system,sans-serif";
+      ctx.textAlign = "center";
+      var step = Math.max(1, Math.floor(labels.length/6));
+      for (var j=0;j<labels.length;j+=step){
+        var xx = p.l + (j / Math.max(labels.length-1,1))*cw;
+        ctx.fillText(labels[j], xx, Hh - 10);
+      }
+    }, 50);
+  }
+
+   
   // -----------------------------
   // UI helpers
   // -----------------------------
@@ -1640,17 +1764,19 @@ h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises Â
         h += '<div style="font-size:11px;color:var(--mt)">No PRs yet. Log weights & reps.</div>';
       } else {
 h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Choose which PRs to show below.</div>';
-        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+         h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">';
         h += '<button class="btn bs" id="pr-filter-all" style="padding:5px 10px;font-size:10px">Select all</button>';
         h += '<button class="btn bs" id="pr-filter-none" style="padding:5px 10px;font-size:10px">Clear</button>';
         h += '</div>';
-        h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:10px">';
-        prNames.forEach(function(n){
-          var checked = (PROG_PR_FILTER || []).indexOf(n) >= 0 ? ' checked' : '';
-          h += '<label style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--c2);border-radius:10px;font-size:11px">';
-          h += '<input type="checkbox" class="pr-filter-toggle" data-ex="'+esc(n)+'"'+checked+'>';
-          h += '<span style="font-weight:700">'+esc(n)+'</span></label>';
+ h += '<div style="margin-bottom:10px">';
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:4px">PR options (multi-select dropdown)</div>';
+        h += '<select class="inp" id="pr-filter-select" multiple size="'+Math.min(8, Math.max(4, prNames.length))+'" style="height:auto">';
+         prNames.forEach(function(n){
+         var selected = (PROG_PR_FILTER || []).indexOf(n) >= 0 ? ' selected' : '';
+          h += '<option value="'+esc(n)+'"'+selected+'>'+esc(n)+'</option>';
         });
+          h += '</select>';
+        h += '<div style="font-size:10px;color:var(--mt);margin-top:4px">Select multiple PRs in the dropdown to update the list.</div>';
        h += '</div>';
 
         var visiblePRs = prNames.filter(function(n){ return (PROG_PR_FILTER || []).indexOf(n) >= 0; }).slice(0, 20);
@@ -1664,6 +1790,23 @@ h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Choose which
             h += '<div style="font-size:15px;font-weight:900;color:var(--yl)">'+toDisplayWeight(p.e1rm)+'</div>';
             h += '</div>';
           });
+           
+           var prTrend = buildPRTrendData(visiblePRs);
+          h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--c2)">';
+          h += '<div style="font-size:12px;font-weight:800;margin-bottom:6px">ðŸ“‰ Selected PR Trend</div>';
+          if (prTrend.series.length && prTrend.labels.length >= 2) {
+            h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+            prTrend.series.forEach(function(s, i){
+              var colors = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#22d3ee", "#f97316"];
+              var color = colors[i % colors.length];
+              h += '<div style="font-size:10px;color:var(--mt);display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:999px;background:'+color+';display:inline-block"></span>'+esc(s.name)+'</div>';
+            });
+            h += '</div>';
+            h += '<canvas id="pr-trend-ch" style="width:100%;height:180px"></canvas>';
+          } else {
+            h += '<div style="font-size:11px;color:var(--mt)">Log selected exercises on at least 2 days to see the trend chart.</div>';
+          }
+          h += '</div>';
         }
       }
       h += '</div>';
@@ -1960,6 +2103,11 @@ h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save 
     if (view === "progress") {
       var bwD2 = Object.keys(BW).sort();
 if (bwD2.length >= 2) drawChart("bw-ch", bwD2.map(fmtS), bwD2.map(function(d){ return toDisplayWeight(BW[d]); }));
+
+      var prTrendData = buildPRTrendData((PROG_PR_FILTER || []).slice(0, 20));
+      if (prTrendData.series.length && prTrendData.labels.length >= 2) {
+        drawMultiChart("pr-trend-ch", prTrendData.labels, prTrendData.series);
+      }
     }
   }
 
@@ -2421,18 +2569,14 @@ var newRoutineBtn = document.getElementById("new-routine-btn");
       };
     });
 
-     document.querySelectorAll(".pr-filter-toggle").forEach(function(box){
-      box.onchange = function(){
-        var ex = this.getAttribute("data-ex");
-        if (!ex) return;
-        if (!Array.isArray(PROG_PR_FILTER)) PROG_PR_FILTER = [];
-        var idx = PROG_PR_FILTER.indexOf(ex);
-        if (this.checked && idx < 0) PROG_PR_FILTER.push(ex);
-        if (!this.checked && idx >= 0) PROG_PR_FILTER.splice(idx, 1);
-        saveAll();
-        render();
-      };
-    });
+     var prFilterSelect = document.getElementById("pr-filter-select");
+    if (prFilterSelect) prFilterSelect.onchange = function(){
+      PROG_PR_FILTER = Array.prototype.slice.call(this.selectedOptions || []).map(function(opt){
+        return opt.value;
+      });
+      saveAll();
+      render();
+    };
     var prAll = document.getElementById("pr-filter-all");
     if (prAll) prAll.onclick = function(){
       PROG_PR_FILTER = Object.keys(PR).sort(function(a,b){ return (PR[b].e1rm||0)-(PR[a].e1rm||0); });
