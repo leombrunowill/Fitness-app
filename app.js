@@ -422,7 +422,20 @@ var FOOD_SEARCH_TEXT = ld("il_food_search", "");
     nutritionUnit: "grams", // "grams" | "ounces" | "bottles"
     autoGoals: true
   });
-var SOC = ld("il_social", {
+function normalizeUSER(u) {
+    var src = (u && typeof u === "object" && !Array.isArray(u)) ? u : {};
+    return {
+      sessionsPerWeek: Math.max(0, Math.min(14, parseInt(src.sessionsPerWeek, 10) || 5)),
+      stepsPerDay: Math.max(0, Math.min(30000, parseInt(src.stepsPerDay, 10) || 10000)),
+      goalMode: (src.goalMode === "maintain" || src.goalMode === "bulk") ? src.goalMode : "cut",
+      goalPace: (src.goalPace === "performance" || src.goalPace === "aggressive") ? src.goalPace : "moderate",
+      cutAggressiveness: (src.cutAggressiveness === "performance" || src.cutAggressiveness === "aggressive") ? src.cutAggressiveness : (src.goalPace || "moderate"),
+      weightUnit: src.weightUnit === "kg" ? "kg" : "lbs",
+      nutritionUnit: (src.nutritionUnit === "ounces" || src.nutritionUnit === "bottles") ? src.nutritionUnit : "grams",
+      autoGoals: src.autoGoals !== false
+    };
+  }
+   var SOC = ld("il_social", {
     profileName: "You",
     friends: [],
     feed: [],
@@ -438,12 +451,13 @@ var SOC = ld("il_social", {
     };
   }
   SOC = normalizeSOC(SOC);
+    USER = normalizeUSER(USER);
    if (!USER.goalMode) USER.goalMode = "cut";
   if (!USER.goalPace) USER.goalPace = USER.cutAggressiveness || "moderate";
-   SER.weightUnit = normalizeWeightUnit(USER.weightUnit);
+   USER.weightUnit = normalizeWeightUnit(USER.weightUnit);
   USER.nutritionUnit = normalizeNutritionUnit(USER.nutritionUnit);
 
-unction normalizeWeightUnit(unit) {
+Function normalizeWeightUnit(unit) {
     return unit === "kg" ? "kg" : "lbs";
   }
   function normalizeNutritionUnit(unit) {
