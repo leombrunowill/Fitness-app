@@ -1526,8 +1526,8 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
       h += '<div class="sect" style="margin:0">🏋️ Today\'s Workout</div>';
        h += '<div class="row" style="gap:6px">';
       h += '<button class="btn bs" id="share-workout-btn" style="padding:6px 10px;font-size:11px">🤝 Share</button>';
-      h += '<button class="btn bp" id="add-ex-btn" style="padding:6px 10px;font-size:11px">➕ Add</button>';
-      h += '</div>';
+      h += '<button class="btn bp" data-act="add-ex" style="padding:6px 10px;font-size:11px">➕ Add</button>';
+       h += '</div>';
        h += '</div><div style="height:8px"></div>';
 
       if (!day.length) {
@@ -1568,6 +1568,10 @@ h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'
           h += '</div>';
         });
       }
+
+        h += '<div class="row" style="justify-content:center;margin-top:10px">';
+      h += '<button class="btn bp" data-act="add-ex" style="padding:10px 14px;font-size:12px">➕ Add Workout</button>';
+      h += '</div>';
     }
 
     if (view === "history") {
@@ -2154,8 +2158,9 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
       render();
     };
 
-    var addEx = document.getElementById("add-ex-btn");
-    if (addEx) addEx.onclick = openAddExerciseModal;
+   document.querySelectorAll('[data-act="add-ex"]').forEach(function(btn){
+      btn.onclick = openAddExerciseModal;
+    });
 var shareWorkoutBtn = document.getElementById("share-workout-btn");
     if (shareWorkoutBtn) shareWorkoutBtn.onclick = shareTodayWorkout;
      
