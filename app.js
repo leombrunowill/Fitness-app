@@ -418,6 +418,8 @@ var FOOD_SEARCH_TEXT = ld("il_food_search", "");
      goalMode: "cut", // "cut" | "maintain" | "bulk"
     goalPace: "moderate", // "performance" | "moderate" | "aggressive"
     cutAggressiveness: "performance", // legacy support
+     weightUnit: "lbs", // "lbs" | "kg"
+    nutritionUnit: "grams", // "grams" | "ounces" | "bottles"
     autoGoals: true
   });
 var SOC = ld("il_social", {
@@ -438,6 +440,25 @@ var SOC = ld("il_social", {
   SOC = normalizeSOC(SOC);
    if (!USER.goalMode) USER.goalMode = "cut";
   if (!USER.goalPace) USER.goalPace = USER.cutAggressiveness || "moderate";
+   if (!USER.weightUnit) USER.weightUnit = "lbs";
+  if (!USER.nutritionUnit) USER.nutritionUnit = "grams";
+
+  function weightUnitLabel() {
+    return USER.weightUnit === "kg" ? "kg" : "lb";
+  }
+  function toDisplayWeight(lbVal) {
+    var lbs = +lbVal || 0;
+    if (USER.weightUnit === "kg") return Math.round((lbs * 0.45359237) * 10) / 10;
+    return Math.round(lbs * 10) / 10;
+  }
+  function toStoredWeight(displayVal) {
+    var v = +displayVal || 0;
+    if (USER.weightUnit === "kg") return Math.round((v / 0.45359237) * 10) / 10;
+    return Math.round(v * 10) / 10;
+  }
+  function nutritionUnitLabel() {
+    return USER.nutritionUnit === "ounces" ? "oz" : (USER.nutritionUnit === "bottles" ? "bottle(s)" : "g");
+  }
   function saveAll() {
     sv("il_th", TH);
     sv("il_view", view);
@@ -829,8 +850,8 @@ function exerciseList(group){
       from: SOC.profileName || "You",
       type: "workout",
       date: selDate,
-      text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + s.volume + " lb volume)." + cardioNote + (p ? " Top PRs: " + p : ""),
-      at: Date.now()
+text: "Logged " + s.exercises + " exercises / " + s.sets + " sets (" + Math.round(toDisplayWeight(s.volume)) + " "+weightUnitLabel()+" volume)." + cardioNote + (p ? " Top PRs: " + p : ""),
+       at: Date.now()
     });
     SOC.feed = SOC.feed.slice(0, 80);
     saveAll();
@@ -1427,13 +1448,14 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
 
     if (view === "log") {
       var bw = BW[selDate];
+             var bwDisp = bw ? toDisplayWeight(bw) : 0;
       h += '<div class="card">';
       h += '<div class="row" style="justify-content:space-between;align-items:center">';
       h += '<div><div style="font-size:10px;color:var(--mt);text-transform:uppercase;font-weight:700">⚖️ Body Weight</div>';
-      h += bw ? '<div style="font-size:22px;font-weight:900;color:var(--pk)">'+bw+' lbs</div>' : '<div style="font-size:11px;color:var(--mt)">Not logged</div>';
-      h += '</div>';
-      h += '<div class="row" style="gap:6px"><input type="number" class="inp" id="bw-inp" style="width:90px" placeholder="lbs" value="'+(bw||"")+'"><button class="btn bs" id="bw-btn" style="padding:8px 12px">'+(bw?"✓":"Log")+'</button></div>';
-      h += '</div></div>';
+    h += bw ? '<div style="font-size:22px;font-weight:900;color:var(--pk)">'+bwDisp+' '+weightUnitLabel()+'</div>' : '<div style="font-size:11px;color:var(--mt)">Not logged</div>';
+       h += '</div>';
+ h += '<div class="row" style="gap:6px"><input type="number" class="inp" id="bw-inp" style="width:90px" placeholder="'+weightUnitLabel()+'" value="'+(bw ? bwDisp : "")+'"><button class="btn bs" id="bw-btn" style="padding:8px 12px">'+(bw?"✓":"Log")+'</button></div>';
+       h += '</div></div>';
 
       var day = W[selDate] || [];
       h += '<div class="row" style="justify-content:space-between;margin-top:4px;align-items:center">';
@@ -1455,8 +1477,8 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
            if (ex.setStyle && ex.setStyle !== "standard") h += '<div style="font-size:10px;color:var(--bl);font-weight:800;margin-top:2px">'+esc(ex.setStyle === 'drop' ? 'Drop Set' : 'Super Set')+'</div>';
 h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(function(s){
             if (isCardioEntry(ex)) return ((+s.t||0)+' min · '+(+s.d||0)+' mi');
-            return (s.r||0)+'×'+((+s.w||0)>0? s.w+' lb':'BW');
-          }).join(" · ")+'</div></div>';
+return (s.r||0)+'×'+((+s.w||0)>0? (toDisplayWeight(s.w)+' '+weightUnitLabel()):'BW');
+}).join(" · ")+'</div></div>';
            h += '<button class="del" data-act="rm-ex" data-i="'+idx+'">×</button>';
             h += '</div>';
           h += '<div class="row" style="gap:8px;align-items:center;margin-top:8px">';
@@ -1466,15 +1488,15 @@ h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(f
             h += '<div style="margin-top:8px;display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center">';
           h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Int':'Set')+'</div>';
           h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Time (min)':'Reps')+'</div>';
-          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Distance (mi)':'Weight (lb)')+'</div>';
-          (ex.sets || []).forEach(function(st, sIdx){
+ h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Distance (mi)':'Weight ('+weightUnitLabel()+')')+'</div>';
+           (ex.sets || []).forEach(function(st, sIdx){
             h += '<div style="font-size:11px;color:var(--mt)">#'+(sIdx+1)+'</div>';
             if (isCardioEntry(ex)) {
               h += '<input class="inp" data-act="set-time" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.5" value="'+(+st.t||0)+'" style="padding:6px 8px">';
               h += '<input class="inp" data-act="set-distance" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.05" value="'+(+st.d||0)+'" style="padding:6px 8px">';
             } else {
               h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px">';
-h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="2.5" value="'+((+st.w||0)>0?(+st.w||0):'')+'" style="padding:6px 8px" placeholder="BW">';
+h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="BW">';
             }
           });
           h += '</div>';
@@ -1505,7 +1527,7 @@ h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'
           h += '<div class="row" style="justify-content:space-between;align-items:center">';
           h += '<div><div style="font-size:13px;font-weight:900">'+esc(fmtD(d))+'</div>';
 var cardioText = (cMin || cDist) ? (' · '+(Math.round(cMin*10)/10)+' min · '+(Math.round(cDist*100)/100)+' mi') : '';
-          h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises · '+sets+' sets · '+Math.round(vol).toLocaleString()+' lbs volume'+cardioText+'</div></div>';
+h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises · '+sets+' sets · '+Math.round(toDisplayWeight(vol)).toLocaleString()+' '+weightUnitLabel()+' volume'+cardioText+'</div></div>';
            h += '<button class="btn bs" data-act="jump" data-date="'+d+'" style="padding:5px 10px;font-size:10px">Open</button>';
           h += '</div></div>';
         });
@@ -1520,8 +1542,8 @@ var cardioText = (cMin || cDist) ? (' · '+(Math.round(cMin*10)/10)+' min · '+(
       if (bwD.length >= 2) {
         var v = bwD.map(function(d){ return +BW[d]; });
         var cur = v[v.length-1], start = v[0], diff = cur-start;
-        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Current: <strong style="color:var(--pk)">'+cur+'</strong> lbs · Change: <strong>'+(diff>0?'+':'')+diff.toFixed(1)+'</strong></div>';
-        h += '<canvas id="bw-ch" style="width:100%;height:180px"></canvas>';
+ h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Current: <strong style="color:var(--pk)">'+toDisplayWeight(cur)+'</strong> '+weightUnitLabel()+' · Change: <strong>'+(diff>0?'+':'')+toDisplayWeight(diff).toFixed(1)+'</strong></div>';
+         h += '<canvas id="bw-ch" style="width:100%;height:180px"></canvas>';
       } else {
         h += '<div style="font-size:11px;color:var(--mt)">Log bodyweight 2+ days.</div>';
       }
@@ -1535,8 +1557,8 @@ var cardioText = (cMin || cDist) ? (' · '+(Math.round(cMin*10)/10)+' min · '+(
         prNames.slice(0, 20).forEach(function(n){
           var p = PR[n];
           h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--c2)">';
-          h += '<div><div style="font-size:12px;font-weight:800">'+esc(n)+'</div><div style="font-size:10px;color:var(--mt)">'+esc(fmtS(p.date||tod()))+' · '+p.w+'×'+p.r+'</div></div>';
-          h += '<div style="font-size:15px;font-weight:900;color:var(--yl)">'+(p.e1rm||0)+'</div>';
+           h += '<div><div style="font-size:12px;font-weight:800">'+esc(n)+'</div><div style="font-size:10px;color:var(--mt)">'+esc(fmtS(p.date||tod()))+' · '+toDisplayWeight(p.w)+'×'+p.r+'</div></div>';
+          h += '<div style="font-size:15px;font-weight:900;color:var(--yl)">'+toDisplayWeight(p.e1rm)+'</div>';
           h += '</div>';
         });
       }
@@ -1600,11 +1622,10 @@ h += '<div class="card">';
 
       h += '<div class="card">';
       h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">➕ Add Food</div>';
-      h += '<div style="display:grid;grid-template-columns:1fr 100px 90px;gap:8px;align-items:end">';
-      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Food</div>';
+      h += '<div style="display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:end">';
+       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Food</div>';
       h += '<input class="inp" id="food-name" placeholder="e.g., chicken, rice, yogurt" list="foodlist"></div>';
-      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Grams</div><input class="inp" type="number" id="food-grams" placeholder="g"></div>';
-      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Servings</div><input class="inp" type="number" id="food-serv" placeholder="x" step="0.5"></div>';
+ h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Amount ('+nutritionUnitLabel()+')</div><input class="inp" type="number" id="food-amount" placeholder="'+nutritionUnitLabel()+'" step="0.1"></div>';
       h += '</div>';
       h += '<div class="row" style="gap:8px;margin-top:10px"><button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button><button class="btn bs bf" id="scan-food-btn" style="width:120px">📷 Scan</button></div>';
       h += '<div class="row" style="gap:8px;margin-top:8px"><button class="btn bs bf" id="open-custom-food-btn" style="flex:1">🧪 Custom food + macros</button></div>';
@@ -1627,8 +1648,8 @@ h += '<div class="card">';
       });
       h += '</div>';
 
-      h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Tip: Use grams for cooked weights (e.g., 175g chicken). Servings uses the default serving size.</div>';
-      h += '</div>';
+h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Tip: set your nutrition measurement in Settings (grams, ounces, or bottles).</div>';
+       h += '</div>';
 
 
       // Meal presets
@@ -1668,8 +1689,8 @@ h += '<div class="card">';
           h += '<div style="min-width:0">';
           h += '<div style="font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.name)+'</div>';
           var amt = [];
-          if (it.grams) amt.push(it.grams + "g");
-          if (it.servings) amt.push(it.servings + " srv");
+          if (it.grams) amt.push((USER.nutritionUnit === "ounces" ? (Math.round((it.grams / 28.3495) * 10) / 10 + " oz") : (it.grams + "g")));
+          if (it.servings) amt.push(it.servings + (USER.nutritionUnit === "bottles" ? " bottle(s)" : " srv"));
           h += '<div style="font-size:10px;color:var(--mt)">'+esc(amt.join(" · "))+'</div>';
           h += '<div style="font-size:10px;color:var(--mt)">'+Math.round(it.cal||0)+' cal · P '+Math.round(it.p||0)+' · C '+Math.round(it.c||0)+' · F '+Math.round(it.f||0)+'</div>';
           h += '</div>';
@@ -1816,21 +1837,18 @@ h += '<div class="card">';
       h += '<div style="height:10px"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Goal</div>';
       var gm = USER.goalMode || "cut";
-      h += '<div class="row" style="gap:6px;flex-wrap:wrap">';
-      ["cut","maintain","bulk"].forEach(function(x){
-        h += '<button class="btn bs set-goal'+(gm===x?' on':'')+'" data-v="'+x+'" style="padding:6px 10px;font-size:11px">'+x+'</button>';
-      });
-      h += '</div></div>';
+h += '<select class="inp" id="set-goal"><option value="cut"'+(gm==='cut'?' selected':'')+'>cut</option><option value="maintain"'+(gm==='maintain'?' selected':'')+'>maintain</option><option value="bulk"'+(gm==='bulk'?' selected':'')+'>bulk</option></select>';
+      h += '</div>';
       h += '<div style="height:10px"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Goal pace</div>';
       var ag = USER.goalPace || USER.cutAggressiveness || "moderate";
-      h += '<div class="row" style="gap:6px;flex-wrap:wrap">';
-      ["performance","moderate","aggressive"].forEach(function(x){
-        var lbl = x==="performance" ? "performance" : x;
-        h += '<button class="btn bs set-aggr'+(ag===x?' on':'')+'" data-v="'+x+'" style="padding:6px 10px;font-size:11px">'+lbl+'</button>';
-      });
-      h += '</div></div>';
-      h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
+      h += '<select class="inp" id="set-goal-pace"><option value="performance"'+(ag==='performance'?' selected':'')+'>performance</option><option value="moderate"'+(ag==='moderate'?' selected':'')+'>moderate</option><option value="aggressive"'+(ag==='aggressive'?' selected':'')+'>aggressive</option></select>';
+      h += '</div>';
+      h += '<div style="height:10px"></div>';
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Weight unit</div><select class="inp" id="set-weight-unit"><option value="lbs"'+(USER.weightUnit==='lbs'?' selected':'')+'>lbs</option><option value="kg"'+(USER.weightUnit==='kg'?' selected':'')+'>kg</option></select></div>';
+      h += '<div style="height:10px"></div>';
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Nutrition measurement</div><select class="inp" id="set-nutrition-unit"><option value="grams"'+(USER.nutritionUnit==='grams'?' selected':'')+'>grams</option><option value="ounces"'+(USER.nutritionUnit==='ounces'?' selected':'')+'>ounces</option><option value="bottles"'+(USER.nutritionUnit==='bottles'?' selected':'')+'>bottles</option></select></div>';
+       h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">💾 Data</div>';
@@ -1849,7 +1867,7 @@ h += '<div class="card">';
 
     if (view === "progress") {
       var bwD2 = Object.keys(BW).sort();
-      if (bwD2.length >= 2) drawChart("bw-ch", bwD2.map(fmtS), bwD2.map(function(d){ return +BW[d]; }));
+if (bwD2.length >= 2) drawChart("bw-ch", bwD2.map(fmtS), bwD2.map(function(d){ return toDisplayWeight(BW[d]); }));
     }
   }
 
@@ -1880,7 +1898,7 @@ h += '<div class="card">';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
     html += '<div><div id="ae-sets-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Sets</div><input class="inp" id="ae-sets" type="number" min="1" max="10" value="3"></div>';
     html += '<div><div id="ae-metric1-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Reps</div><input class="inp" id="ae-reps" type="number" min="0" step="1" value="8"></div>';
-  html += '<div><div id="ae-metric2-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight (lb)</div><input class="inp" id="ae-w" type="number" min="0" step="5" placeholder="optional"></div>';
+html += '<div><div id="ae-metric2-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight (' + weightUnitLabel() + ')</div><input class="inp" id="ae-w" type="number" min="0" step="5" placeholder="optional"></div>';
      html += '</div>';
 
      html += '<div style="height:10px"></div>';
@@ -1914,8 +1932,8 @@ h += '<div class="card">';
       }
       hintEl.style.display = "block";
       hintEl.innerHTML = '📈 Progressive Overload · Last ('+fmtS(sug.last.date)+') '+
-        sug.last.w+'×'+sug.last.r+
-        ' · Try <strong>'+sug.opt1.w+'×'+sug.opt1.r+'</strong> or <strong>'+sug.opt2.w+'×'+sug.opt2.r+'</strong>';
+        toDisplayWeight(sug.last.w)+'×'+sug.last.r+
+        ' · Try <strong>'+toDisplayWeight(sug.opt1.w)+'×'+sug.opt1.r+'</strong> or <strong>'+toDisplayWeight(sug.opt2.w)+'×'+sug.opt2.r+'</strong>';
     }
 
       function updateLastSessionHint() {
@@ -1931,7 +1949,7 @@ h += '<div class="card">';
       var styleName = (last.entry.setStyle === "drop") ? "Drop Set" : (last.entry.setStyle === "super" ? "Super Set" : "Standard");
       var setLines = (last.entry.sets || []).map(function(s, i){
         if (isCardioEntry(last.entry)) return '#'+(i+1)+' '+((+s.t||0)+' min · '+(+s.d||0)+' mi');
-        return '#'+(i+1)+' '+(+s.r||0)+' reps @ '+((+s.w||0)>0 ? (s.w+' lb') : 'BW');
+return '#'+(i+1)+' '+(+s.r||0)+' reps @ '+((+s.w||0)>0 ? (toDisplayWeight(s.w)+' '+weightUnitLabel()) : 'BW');
       }).join(' · ');
       lastSessionEl.style.display = "block";
       lastSessionEl.innerHTML = '<div style="font-size:10px;color:var(--mt);font-weight:700">Last time for this exercise</div>'+
@@ -1948,15 +1966,15 @@ h += '<div class="card">';
       var wtInp = document.getElementById("ae-w");
       if (setsLbl) setsLbl.textContent = isCardio ? "Intervals" : "Sets";
       if (l1) l1.textContent = isCardio ? "Time (min)" : "Reps";
-      if (l2) l2.textContent = isCardio ? "Distance (mi)" : "Weight (lb)";
-      if (repInp) {
+ if (l2) l2.textContent = isCardio ? "Distance (mi)" : "Weight ("+weightUnitLabel()+")";
+        if (repInp) {
         repInp.step = isCardio ? "0.5" : "1";
         repInp.max = isCardio ? "600" : "50";
         if (isCardio && (!repInp.value || +repInp.value === 8)) repInp.value = "20";
       }
       if (wtInp) {
-        wtInp.step = isCardio ? "0.05" : "5";
-        if (isCardio && (!wtInp.value || +wtInp.value === 0)) wtInp.value = "2";
+wtInp.step = isCardio ? "0.05" : (USER.weightUnit === "kg" ? "1" : "5");
+         if (isCardio && (!wtInp.value || +wtInp.value === 0)) wtInp.value = "2";
          if (!isCardio && +wtInp.value === 0) wtInp.value = "";
       }
     }
@@ -2009,6 +2027,7 @@ h += '<div class="card">';
       var isCardio = (grp === "Cardio");
       var reps = parseFloat((document.getElementById("ae-reps") || {}).value) || (isCardio ? 20 : 8);
       var wt = parseFloat((document.getElementById("ae-w") || {}).value) || 0;
+       var wtStored = isCardio ? wt : toStoredWeight(wt);
              var setStyle = (document.getElementById("ae-set-style") || {}).value || "standard";
       var note = ((document.getElementById("ae-note") || {}).value || "").trim();
 
@@ -2016,8 +2035,8 @@ h += '<div class="card">';
 var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle };
        for (var i=0;i<setsN;i++) {
         if (isCardio) entry.sets.push({ t: Math.max(0, Math.round(reps * 10) / 10), d: Math.max(0, Math.round(wt * 100) / 100) });
-        else entry.sets.push({ r: Math.max(0, Math.round(reps)), w: Math.max(0, Math.round(wt * 10) / 10) });
-      }
+ else entry.sets.push({ r: Math.max(0, Math.round(reps)), w: Math.max(0, Math.round(wtStored * 10) / 10) });
+       }
 
       W[selDate].push(entry);
       updatePRFromEntry(selDate, entry);
@@ -2060,8 +2079,8 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     if (bwBtn) bwBtn.onclick = function(){
       var inp = document.getElementById("bw-inp");
       var v = inp ? parseFloat(inp.value) : 0;
-      if (!v || v < 50) return alert("Enter a valid weight (lbs).");
-      BW[selDate] = Math.round(v * 10) / 10;
+     if (!v || v < 20) return alert("Enter a valid weight ("+weightUnitLabel()+").");
+      BW[selDate] = toStoredWeight(v);
       saveAll();
       render();
     };
@@ -2113,8 +2132,8 @@ if (!ex || !ex.sets) return;
         if (isNaN(setIdx) || !ex.sets[setIdx]) return;
        var v = parseFloat(this.value) || 0;
         if (act === "set-reps") ex.sets[setIdx].r = Math.max(0, Math.round(v));
-        else if (act === "set-weight") ex.sets[setIdx].w = Math.max(0, Math.round(v * 10) / 10);
-        else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) / 10);
+else if (act === "set-weight") ex.sets[setIdx].w = Math.max(0, Math.round(toStoredWeight(v) * 10) / 10);
+else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) / 10);
         else if (act === "set-distance") ex.sets[setIdx].d = Math.max(0, Math.round(v * 100) / 100);
         updatePRFromEntry(selDate, ex);
         saveAll();
@@ -2139,8 +2158,7 @@ if (!ex || !ex.sets) return;
     var addFoodBtn = document.getElementById("add-food-btn");
     if (addFoodBtn) addFoodBtn.onclick = function(){
       var nameEl = document.getElementById("food-name");
-      var gramsEl = document.getElementById("food-grams");
-      var servEl = document.getElementById("food-serv");
+      var amountEl = document.getElementById("food-amount");
 
       var name = (nameEl && nameEl.value ? nameEl.value : "").trim();
       if (!name) return alert("Enter a food name.");
@@ -2148,12 +2166,15 @@ if (!ex || !ex.sets) return;
       var food = findFoodByName(name);
       if (!food) return alert("Food not found. Try selecting from the dropdown suggestions.");
 
-      var grams = parseFloat(gramsEl && gramsEl.value ? gramsEl.value : "") || 0;
-      var servings = parseFloat(servEl && servEl.value ? servEl.value : "") || 0;
+      var amount = parseFloat(amountEl && amountEl.value ? amountEl.value : "") || 0;
+      var grams = 0, servings = 0;
+      if (USER.nutritionUnit === "ounces") grams = amount * 28.3495;
+      else if (USER.nutritionUnit === "bottles") servings = amount;
+      else grams = amount;
 
       var calc = calcItem(food, grams, servings);
-      if (!calc) return alert("Enter grams or servings.");
-
+if (!calc) return alert("Enter an amount.");
+       
       ensureDay(selDate);
           var foodKeyHit = foodKey(food.name || name);
       NLOG[selDate].push({
@@ -2170,8 +2191,7 @@ if (!ex || !ex.sets) return;
       });
 
       if (nameEl) nameEl.value = "";
-      if (gramsEl) gramsEl.value = "";
-      if (servEl) servEl.value = "";
+       if (amountEl) amountEl.value = "";
 
       saveAll();
       render();
@@ -2358,8 +2378,8 @@ var saveSocialName = document.getElementById("save-social-name");
         from: SOC.profileName || "You",
         type: "profile",
         date: tod(),
-        text: "Profile snapshot: " + me.workouts + " workouts, " + me.volume + " lb volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : ""),
-        at: Date.now()
+ text: "Profile snapshot: " + me.workouts + " workouts, " + Math.round(toDisplayWeight(me.volume)) + " "+weightUnitLabel()+" volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : ""),
+         at: Date.now()
       });
       SOC.feed = SOC.feed.slice(0, 80);
       saveAll();
@@ -2372,25 +2392,15 @@ var saveSocialName = document.getElementById("save-social-name");
       var steps = parseInt((document.getElementById("set-steps")||{}).value, 10);
       if (!isNaN(sess)) USER.sessionsPerWeek = Math.max(0, Math.min(14, sess));
       if (!isNaN(steps)) USER.stepsPerDay = Math.max(0, Math.min(30000, steps));
-      saveAll();
+      USER.goalMode = ((document.getElementById("set-goal")||{}).value || "cut");
+      USER.goalPace = ((document.getElementById("set-goal-pace")||{}).value || "moderate");
+      USER.cutAggressiveness = USER.goalPace;
+      USER.weightUnit = ((document.getElementById("set-weight-unit")||{}).value || "lbs");
+      USER.nutritionUnit = ((document.getElementById("set-nutrition-unit")||{}).value || "grams");
+       saveAll();
       alert("Saved!");
       render();
     };
-    document.querySelectorAll(".set-aggr").forEach(function(btn){
-      btn.onclick = function(){
-USER.goalPace = this.getAttribute("data-v") || "moderate";
-        USER.cutAggressiveness = USER.goalPace;
-        saveAll();
-        render();
-      };
-    });
-    document.querySelectorAll(".set-goal").forEach(function(btn){
-      btn.onclick = function(){
-        USER.goalMode = this.getAttribute("data-v") || "cut";
-         saveAll();
-        render();
-      };
-    });
 
     var exportBtn = document.getElementById("export-btn");
     if (exportBtn) exportBtn.onclick = function(){
