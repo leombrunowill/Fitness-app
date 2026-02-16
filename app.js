@@ -1648,7 +1648,7 @@ h += '<div class="card">';
       h += '<input class="inp" id="food-name" placeholder="e.g., chicken, rice, yogurt" list="foodlist"></div>';
  h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Amount</div><input class="inp" type="number" id="food-amount" placeholder="Amount" step="0.1"></div>';
        h += '</div>';
-      h += '<div style="margin-top:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Measurement for this entry</div><select class="inp" id="food-unit"><option value="grams"'+(USER.nutritionUnit==='grams'?' selected':'')+'>grams</option><option value="ounces"'+(USER.nutritionUnit==='ounces'?' selected':'')+'>ounces</option><option value="bottles"'+(USER.nutritionUnit==='bottles'?' selected':'')+'>servings</option></select></div>';
+h += '<div style="margin-top:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Measurement for this entry</div><select class="inp" id="food-unit"><option value="grams"'+(USER.nutritionUnit==='grams'?' selected':'')+'>grams</option><option value="ounces"'+(USER.nutritionUnit==='ounces'?' selected':'')+'>ounces</option><option value="bottles"'+(USER.nutritionUnit==='bottles'?' selected':'')+'>servings</option></select></div>';
        h += '<div class="row" style="gap:8px;margin-top:10px"><button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button><button class="btn bs bf" id="scan-food-btn" style="width:120px">📷 Scan</button></div>';
       h += '<div class="row" style="gap:8px;margin-top:8px"><button class="btn bs bf" id="open-custom-food-btn" style="flex:1">🧪 Custom food + macros</button></div>';
 
@@ -1867,8 +1867,8 @@ h += '<select class="inp" id="set-goal"><option value="cut"'+(gm==='cut'?' selec
       h += '<select class="inp" id="set-goal-pace"><option value="performance"'+(ag==='performance'?' selected':'')+'>performance</option><option value="moderate"'+(ag==='moderate'?' selected':'')+'>moderate</option><option value="aggressive"'+(ag==='aggressive'?' selected':'')+'>aggressive</option></select>';
       h += '</div>';
       h += '<div style="height:10px"></div>';
-      h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
-      h += '</div>';
+h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
+       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">💾 Data</div>';
       h += '<div class="row" style="gap:8px;flex-wrap:wrap">';
@@ -1914,7 +1914,7 @@ if (bwD2.length >= 2) drawChart("bw-ch", bwD2.map(fmtS), bwD2.map(function(d){ r
     html += '<button class="btn bs" id="ae-custom-add" style="padding:8px 10px">Save</button>';
     html += '</div>';
     html += '<div style="height:10px"></div>';
-       html += '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight unit for this workout</div><select class="inp" id="ae-weight-unit"><option value="lbs"'+(USER.weightUnit==='lbs'?' selected':'')+'>lbs</option><option value="kg"'+(USER.weightUnit==='kg'?' selected':'')+'>kg</option></select></div>';
+html += '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight unit for this workout</div><select class="inp" id="ae-weight-unit"><option value="lbs"'+(USER.weightUnit==='lbs'?' selected':'')+'>lbs</option><option value="kg"'+(USER.weightUnit==='kg'?' selected':'')+'>kg</option></select></div>';
      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
     html += '<div><div id="ae-sets-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Sets</div><input class="inp" id="ae-sets" type="number" min="1" max="10" value="3"></div>';
     html += '<div><div id="ae-metric1-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Reps</div><input class="inp" id="ae-reps" type="number" min="0" step="1" value="8"></div>';
@@ -2051,7 +2051,7 @@ wtInp.step = isCardio ? "0.05" : (modalWeightUnit === "kg" ? "1" : "5");
       var isCardio = (grp === "Cardio");
       var reps = parseFloat((document.getElementById("ae-reps") || {}).value) || (isCardio ? 20 : 8);
       var wt = parseFloat((document.getElementById("ae-w") || {}).value) || 0;
-     var chosenWeightUnit = normalizeWeightUnit((document.getElementById("ae-weight-unit") || {}).value || USER.weightUnit);
+    var chosenWeightUnit = normalizeWeightUnit((document.getElementById("ae-weight-unit") || {}).value || USER.weightUnit);
       USER.weightUnit = chosenWeightUnit;
        var wtStored = isCardio ? wt : toStoredWeight(wt);
              var setStyle = (document.getElementById("ae-set-style") || {}).value || "standard";
@@ -2193,7 +2193,7 @@ else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) 
       if (!food) return alert("Food not found. Try selecting from the dropdown suggestions.");
 
       var amount = parseFloat(amountEl && amountEl.value ? amountEl.value : "") || 0;
-      var foodUnit = normalizeNutritionUnit(((document.getElementById("food-unit") || {}).value) || USER.nutritionUnit);
+     var foodUnit = normalizeNutritionUnit(((document.getElementById("food-unit") || {}).value) || USER.nutritionUnit);
       USER.nutritionUnit = foodUnit;
        var grams = 0, servings = 0;
        if (foodUnit === "ounces") grams = amount * 28.3495;
