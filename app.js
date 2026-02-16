@@ -60,7 +60,7 @@ document.addEventListener("DOMContentLoaded", function () {
     Cardio: ["Treadmill","Rowing Machine","Cycling","Stair Climber","Jump Rope"]
   };
   var ICO = {Chest:"🏋️",Back:"🔙",Legs:"🦵",Shoulders:"🏹",Arms:"💪",Core:"🧘",Cardio:"🏃"};
-    var EQUIPMENT_OPTIONS = ["Barbell", "Dumbbell", "Plate Loaded", "Smith Machine"];
+    var EQUIPMENT_OPTIONS = ["Barbell", "Dumbbell", "Machine", "Plate Loaded", "Smith Machine"];
    var QUOTES = [
     {t:"Discipline is choosing what you want most over what you want now.",a:"Abraham Lincoln"},
     {t:"Success is the sum of small efforts, repeated day in and day out.",a:"Robert Collier"},
