@@ -395,7 +395,108 @@ function openBarcodeScanner(){
     "Wesley Farms Blueberry Granola"
   ];
 
+ // -----------------------------
+  // Supabase Auth
   // -----------------------------
+  var SUPABASE_URL = window.IRONLOG_SUPABASE_URL || "";
+  var SUPABASE_ANON_KEY = window.IRONLOG_SUPABASE_ANON_KEY || "";
+  var sb = null;
+  var authSession = null;
+  var authReady = false;
+  var authBusy = false;
+  var authMsg = "";
+
+  function initAuth() {
+    if (!window.supabase) {
+      authMsg = "Supabase SDK not loaded.";
+      authReady = true;
+      return;
+    }
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      authMsg = "Set window.IRONLOG_SUPABASE_URL and window.IRONLOG_SUPABASE_ANON_KEY to enable auth.";
+      authReady = true;
+      return;
+    }
+
+    try {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      sb.auth.getSession().then(function(res) {
+        authSession = (res && res.data && res.data.session) ? res.data.session : null;
+        authReady = true;
+        render();
+      }).catch(function(err) {
+        authMsg = "Session check failed: " + (err && err.message ? err.message : "Unknown error");
+        authReady = true;
+        render();
+      });
+
+      sb.auth.onAuthStateChange(function(_event, session) {
+        authSession = session || null;
+        if (authSession) authMsg = "";
+        render();
+      });
+    } catch (e) {
+      authMsg = "Auth initialization failed.";
+      authReady = true;
+    }
+  }
+
+  function authCredsFromUI() {
+    var email = ((document.getElementById("auth-email") || {}).value || "").trim();
+    var password = ((document.getElementById("auth-password") || {}).value || "").trim();
+    return { email: email, password: password };
+  }
+
+  function runAuthAction(kind) {
+    if (!sb || authBusy) return;
+    var creds = authCredsFromUI();
+    if (!creds.email || !creds.password) {
+      authMsg = "Enter email and password.";
+      render();
+      return;
+    }
+    authBusy = true;
+    authMsg = "";
+    render();
+
+    var op = kind === "signup"
+      ? sb.auth.signUp({ email: creds.email, password: creds.password })
+      : sb.auth.signInWithPassword({ email: creds.email, password: creds.password });
+
+    op.then(function(res) {
+      var err = res && res.error;
+      if (err) {
+        authMsg = err.message || "Auth failed.";
+      } else if (kind === "signup") {
+        authMsg = "Sign-up successful. Check your email for confirmation if required.";
+      } else {
+        authMsg = "Signed in.";
+      }
+    }).catch(function(err) {
+      authMsg = (err && err.message) ? err.message : "Auth request failed.";
+    }).finally(function() {
+      authBusy = false;
+      render();
+    });
+  }
+
+  function runSignOut() {
+    if (!sb || authBusy) return;
+    authBusy = true;
+    authMsg = "";
+    render();
+    sb.auth.signOut().then(function(res) {
+      if (res && res.error) authMsg = res.error.message || "Sign out failed.";
+      else authMsg = "Signed out.";
+    }).catch(function(err) {
+      authMsg = (err && err.message) ? err.message : "Sign out failed.";
+    }).finally(function() {
+      authBusy = false;
+      render();
+    });
+  }
+   
+   // -----------------------------
   // App state
   // -----------------------------
   var TH = ld("il_th", "dark"); // "dark" or "light"
@@ -520,7 +621,29 @@ function normalizeWeightUnit(unit) {
     if (b) b.textContent = TH === "dark" ? "🌙" : "☀️";
   }
 
-  // -----------------------------
+ function renderAuthStatusCard() {
+    var h = "";
+    h += "<div class=\"card\" style=\"margin-bottom:8px\">";
+    h += "<div class=\"row\" style=\"justify-content:space-between;align-items:center;gap:8px\">";
+    h += "<div style=\"min-width:0\">";
+    if (!authReady) {
+      h += "<div style=\"font-size:11px;color:var(--mt)\">🔐 Checking session…</div>";
+    } else if (authSession && authSession.user) {
+      h += "<div style=\"font-size:11px;font-weight:700;color:var(--gn);white-space:nowrap;overflow:hidden;text-overflow:ellipsis\">✅ Signed in as " + esc(authSession.user.email || "user") + "</div>";
+    } else if (sb) {
+      h += "<div style=\"font-size:11px;color:var(--yl);font-weight:700\">🔓 Not signed in</div>";
+    } else {
+      h += "<div style=\"font-size:11px;color:var(--mt)\">⚙️ Auth unavailable</div>";
+    }
+    if (authBusy) h += "<div style=\"font-size:10px;color:var(--mt);margin-top:3px\">Working…</div>";
+    if (authMsg) h += "<div style=\"font-size:10px;color:var(--mt);margin-top:3px\">" + esc(authMsg) + "</div>";
+    h += "</div>";
+    if (authSession && authSession.user) h += "<button class=\"btn bs\" id=\"auth-signout-top\" style=\"padding:6px 10px;font-size:11px\">Sign out</button>";
+    h += "</div></div>";
+    return h;
+  }
+   
+   // -----------------------------
   // Workout helpers
   // -----------------------------
   function e1rm(w, r) {
@@ -1622,7 +1745,9 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
 
     var h = "";
 
-    if (view === "log") {
+    h += renderAuthStatusCard();
+     
+     if (view === "log") {
       var q = todayQuote();
       h += '<div class="quote-box"><div class="quote-text">"'+esc(q.t)+'"</div><div class="quote-author">— '+esc(q.a)+'</div></div>';
     }
@@ -1985,6 +2110,28 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
     if (view === "more") {
       h += '<div class="sect">⚡ More</div>';
 
+       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🔐 Account</div>';
+      if (!authReady) {
+        h += '<div style="font-size:11px;color:var(--mt)">Checking session…</div>';
+      } else if (authBusy) {
+        h += '<div style="font-size:11px;color:var(--mt)">Working…</div>';
+      } else if (!sb) {
+        h += '<div style="font-size:11px;color:var(--mt)">' + esc(authMsg || "Auth not configured.") + '</div>';
+      } else if (authSession && authSession.user) {
+        h += '<div style="font-size:12px;font-weight:700">Signed in as '+esc(authSession.user.email || "")+'</div>';
+        h += '<div style="font-size:10px;color:var(--mt);margin-top:4px">Session is active in this browser.</div>';
+        h += '<button class="btn bs" id="auth-signout" style="margin-top:10px;padding:8px 10px">Sign out</button>';
+      } else {
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:6px">Create an account or sign in with email/password.</div>';
+        h += '<input class="inp" id="auth-email" type="email" placeholder="you@example.com" style="margin-bottom:6px">';
+        h += '<input class="inp" id="auth-password" type="password" placeholder="Password" style="margin-bottom:8px">';
+        h += '<div class="row" style="gap:6px">';
+        h += '<button class="btn bp" id="auth-signup" style="padding:8px 10px">Sign up</button>';
+        h += '<button class="btn bs" id="auth-signin" style="padding:8px 10px">Sign in</button>';
+        h += '</div>';
+      }
+      h += '</div>';
+       
        var socialMe = mySocialSnapshot();
       var lift = SOC.leaderboardLift || "Bench Press";
       var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
@@ -2310,7 +2457,19 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
       btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
     });
 
-    var bwBtn = document.getElementById("bw-btn");
+    var authSignUpBtn = document.getElementById("auth-signup");
+    if (authSignUpBtn) authSignUpBtn.onclick = function(){ runAuthAction("signup"); };
+
+    var authSignInBtn = document.getElementById("auth-signin");
+    if (authSignInBtn) authSignInBtn.onclick = function(){ runAuthAction("signin"); };
+
+    var authSignOutBtn = document.getElementById("auth-signout");
+    if (authSignOutBtn) authSignOutBtn.onclick = runSignOut;
+
+    var authSignOutTopBtn = document.getElementById("auth-signout-top");
+    if (authSignOutTopBtn) authSignOutTopBtn.onclick = runSignOut;
+     
+     var bwBtn = document.getElementById("bw-btn");
     if (bwBtn) bwBtn.onclick = function(){
       var inp = document.getElementById("bw-inp");
       var v = inp ? parseFloat(inp.value) : 0;
@@ -2704,5 +2863,6 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
   sanitizeNutritionState();
 normalizeRoutines();  
 saveAll();
+   initAuth();
   render();
 });
