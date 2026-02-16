@@ -457,7 +457,7 @@ function normalizeUSER(u) {
    USER.weightUnit = normalizeWeightUnit(USER.weightUnit);
   USER.nutritionUnit = normalizeNutritionUnit(USER.nutritionUnit);
 
-Function normalizeWeightUnit(unit) {
+function normalizeWeightUnit(unit) {
     return unit === "kg" ? "kg" : "lbs";
   }
   function normalizeNutritionUnit(unit) {
