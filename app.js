@@ -411,7 +411,6 @@ function openBarcodeScanner(){
    var RLIB = ld("il_routines", []); // saved workout routines
   var RSCHED = ld("il_routine_sched", {}); // weekday -> routine id
   var NUPC = ld("il_nupc", {});   // barcode -> foodKey mapping
-var FOOD_SEARCH_TEXT = ld("il_food_search", "");
   // activity assumptions (used for calorie targets)
    
   var USER = ld("il_user", {
@@ -497,7 +496,6 @@ function normalizeWeightUnit(unit) {
     sv("il_routine_sched", RSCHED);
     sv("il_nfoods", NFOODS);
     sv("il_nupc", NUPC);
-     sv("il_food_search", FOOD_SEARCH_TEXT);
     sv("il_user", USER);
      sv("il_social", SOC);
   }
@@ -1827,24 +1825,7 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       var dayData = dayNutrition(selDate);
       var totals = dayData.totals;
       var goals = calcAutoGoals();
- var foodHits = foodSearch(FOOD_SEARCH_TEXT, 6);
       h += '<div class="sect">🍽️ Nutrition</div>';
-h += '<div class="card">';
-      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🔎 Food Finder (fuzzy search)</div>';
-      h += '<input class="inp" id="food-search" value="'+esc(FOOD_SEARCH_TEXT)+'" placeholder="Search foods (e.g., chkn brst, yogrt, bagle)">';
-      if (FOOD_SEARCH_TEXT && !foodHits.length) {
-        h += '<div style="font-size:11px;color:var(--mt);margin-top:8px">No matches yet. Try a shorter term.</div>';
-      }
-      foodHits.forEach(function(hit){
-        var f = hit.food || {};
-        var per = f.per100 || {cal:0,p:0,c:0,f:0};
-        h += '<div style="margin-top:8px;padding:8px;border:1px solid var(--c2);border-radius:10px;display:flex;justify-content:space-between;gap:8px;align-items:center">';
-        h += '<div style="min-width:0"><div style="font-size:12px;font-weight:800">'+esc(f.name || hit.key)+'</div>';
-        h += '<div style="font-size:10px;color:var(--mt)">Per 100g: '+Math.round(per.cal||0)+' cal · P '+(per.p||0)+' · C '+(per.c||0)+' · F '+(per.f||0)+'</div></div>';
-        h += '<button class="btn bs food-use" data-key="'+esc(hit.key)+'" style="padding:6px 10px;font-size:11px">Use</button>';
-        h += '</div>';
-      });
-      h += '</div>';
       var calPct = Math.min(100, Math.round((totals.cal / goals.cal) * 100));
       var pPct = Math.min(100, Math.round((totals.p / goals.p) * 100));
       h += '<div class="card">';
@@ -2453,23 +2434,6 @@ if (!calc) return alert("Enter an amount.");
       saveAll();
       render();
     };
-var foodSearchEl = document.getElementById("food-search");
-    if (foodSearchEl) {
-      foodSearchEl.oninput = function(){
-        FOOD_SEARCH_TEXT = this.value || "";
-        sv("il_food_search", FOOD_SEARCH_TEXT);
-        render();
-      };
-    }
-
-    document.querySelectorAll(".food-use").forEach(function(btn){
-      btn.onclick = function(){
-        var k = this.getAttribute("data-key");
-        if (!k || !NFOODS[k]) return;
-        var n = document.getElementById("food-name");
-        if (n) n.value = NFOODS[k].name || k;
-      };
-    });
     // Barcode scan (optional)
     var scanBtn = document.getElementById("scan-food-btn");
     if (scanBtn) scanBtn.addEventListener("click", scanFoodBarcode);
