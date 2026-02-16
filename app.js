@@ -60,7 +60,8 @@ document.addEventListener("DOMContentLoaded", function () {
     Cardio: ["Treadmill","Rowing Machine","Cycling","Stair Climber","Jump Rope"]
   };
   var ICO = {Chest:"🏋️",Back:"🔙",Legs:"🦵",Shoulders:"🏹",Arms:"💪",Core:"🧘",Cardio:"🏃"};
-  var QUOTES = [
+    var EQUIPMENT_OPTIONS = ["Barbell", "Dumbbell", "Plate Loaded", "Smith Machine"];
+   var QUOTES = [
     {t:"Discipline is choosing what you want most over what you want now.",a:"Abraham Lincoln"},
     {t:"Success is the sum of small efforts, repeated day in and day out.",a:"Robert Collier"},
     {t:"The last three or four reps is what makes the muscle grow.",a:"Arnold Schwarzenegger"},
@@ -1538,6 +1539,7 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
           h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
           h += '<div><div style="font-size:12px;color:var(--mt);font-weight:700">'+esc(ex.group)+'</div>';
           h += '<div style="font-size:15px;font-weight:900">'+esc(ex.exercise)+'</div>';
+                    if (ex.equipment) h += '<div style="font-size:10px;color:var(--mt);font-weight:700;margin-top:2px">🛠 '+esc(ex.equipment)+'</div>';
            if (ex.setStyle && ex.setStyle !== "standard") h += '<div style="font-size:10px;color:var(--bl);font-weight:800;margin-top:2px">'+esc(ex.setStyle === 'drop' ? 'Drop Set' : 'Super Set')+'</div>';
 h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">'+ex.sets.map(function(s){
             if (isCardioEntry(ex)) return ((+s.t||0)+' min · '+(+s.d||0)+' mi');
@@ -1962,6 +1964,10 @@ if (bwD2.length >= 2) drawChart("bw-ch", bwD2.map(fmtS), bwD2.map(function(d){ r
     html += '</div>';
     html += '<div style="height:10px"></div>';
 html += '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Weight unit for this workout</div><select class="inp" id="ae-weight-unit"><option value="lbs"'+(USER.weightUnit==='lbs'?' selected':'')+'>lbs</option><option value="kg"'+(USER.weightUnit==='kg'?' selected':'')+'>kg</option></select></div>';
+      html += '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Equipment</div><select class="inp" id="ae-equipment">';
+    html += '<option value="">No equipment selected</option>';
+    EQUIPMENT_OPTIONS.forEach(function(opt){ html += '<option value="'+esc(opt)+'">'+esc(opt)+'</option>'; });
+    html += '</select></div>';
      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
     html += '<div><div id="ae-sets-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Sets</div><input class="inp" id="ae-sets" type="number" min="1" max="10" value="3"></div>';
     html += '<div><div id="ae-metric1-label" style="font-size:10px;color:var(--mt);margin-bottom:4px">Reps</div><input class="inp" id="ae-reps" type="number" min="0" step="1" value="8"></div>';
@@ -2019,9 +2025,11 @@ html += '<div><div id="ae-metric2-label" style="font-size:10px;color:var(--mt);m
 return '#'+(i+1)+' '+(+s.r||0)+' reps @ '+((+s.w||0)>0 ? (toDisplayWeight(s.w)+' '+weightUnitLabel()) : 'BW');
       }).join(' · ');
       lastSessionEl.style.display = "block";
-      lastSessionEl.innerHTML = '<div style="font-size:10px;color:var(--mt);font-weight:700">Last time for this exercise</div>'+
+      var equipmentLine = last.entry.equipment ? ('<div style="font-size:10px;color:var(--mt);margin-top:2px">🛠 '+esc(last.entry.equipment)+'</div>') : '';
+         lastSessionEl.innerHTML = '<div style="font-size:10px;color:var(--mt);font-weight:700">Last time for this exercise</div>'+
         '<div style="font-size:11px;font-weight:800;margin-top:2px">'+esc(fmtD(last.date))+' · '+styleName+'</div>'+
-        '<div style="font-size:11px;color:var(--mt);margin-top:3px">'+esc(setLines)+'</div>';
+               equipmentLine+
+            '<div style="font-size:11px;color:var(--mt);margin-top:3px">'+esc(setLines)+'</div>';
     }
      function syncAddModalFields() {
       var grp = (document.getElementById("ae-group") || {}).value || "Chest";
@@ -2102,10 +2110,11 @@ wtInp.step = isCardio ? "0.05" : (modalWeightUnit === "kg" ? "1" : "5");
       USER.weightUnit = chosenWeightUnit;
        var wtStored = isCardio ? wt : toStoredWeight(wt);
              var setStyle = (document.getElementById("ae-set-style") || {}).value || "standard";
-      var note = ((document.getElementById("ae-note") || {}).value || "").trim();
+     var equipment = ((document.getElementById("ae-equipment") || {}).value || "").trim();
+       var note = ((document.getElementById("ae-note") || {}).value || "").trim();
 
       ensureDay(selDate);
-var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle };
+var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle, equipment: equipment };
        for (var i=0;i<setsN;i++) {
         if (isCardio) entry.sets.push({ t: Math.max(0, Math.round(reps * 10) / 10), d: Math.max(0, Math.round(wt * 100) / 100) });
  else entry.sets.push({ r: Math.max(0, Math.round(reps)), w: Math.max(0, Math.round(wtStored * 10) / 10) });
