@@ -558,18 +558,43 @@ function normalizeUSER(u) {
       autoGoals: src.autoGoals !== false
     };
   }
-   var SOC = ld("il_social", {
-    profileName: "You",
+  var SOC = ld("il_social", {
+   profileName: "You",
+     handle: "",
+    bio: "",
     friends: [],
+     requests: [],
+    messages: {},
     feed: [],
     leaderboardLift: "Bench Press"
   });
   function normalizeSOC(s) {
     s = s || {};
-    return {
+    var friends = Array.isArray(s.friends) ? s.friends : [];
+    var requests = Array.isArray(s.requests) ? s.requests : [];
+    var messages = (s.messages && typeof s.messages === "object") ? s.messages : {};
+     return {
       profileName: String(s.profileName || "You"),
-      friends: Array.isArray(s.friends) ? s.friends : [],
-      feed: Array.isArray(s.feed) ? s.feed : [],
+handle: String(s.handle || ""),
+      bio: String(s.bio || ""),
+      friends: friends.map(function(fr){
+        return {
+          id: fr && fr.id ? String(fr.id) : socialId(),
+          name: String((fr && fr.name) || "Friend"),
+          handle: String((fr && fr.handle) || ""),
+          workouts: +(fr && fr.workouts || 0),
+          lifts: (fr && fr.lifts && typeof fr.lifts === "object") ? fr.lifts : {}
+        };
+      }),
+      requests: requests.map(function(rq){
+        return {
+          id: rq && rq.id ? String(rq.id) : socialId(),
+          name: String((rq && rq.name) || "Athlete"),
+          handle: String((rq && rq.handle) || "")
+        };
+      }),
+      messages: messages,
+        feed: Array.isArray(s.feed) ? s.feed : [],
       leaderboardLift: String(s.leaderboardLift || "Bench Press")
     };
   }
@@ -1180,7 +1205,50 @@ function buildPRTrendData(exerciseNames) {
     });
   }
 
-  function shareTodayWorkout() {
+  function friendById(friendId) {
+    return (SOC.friends || []).find(function(fr){ return String(fr.id) === String(friendId); }) || null;
+  }
+
+  function pushFeed(type, text, extras) {
+    var item = {
+      id: socialId(),
+      from: SOC.profileName || "You",
+      type: type || "update",
+      date: tod(),
+      text: text || "",
+      at: Date.now()
+    };
+    if (extras && typeof extras === "object") {
+      Object.keys(extras).forEach(function(k){ item[k] = extras[k]; });
+    }
+    SOC.feed = SOC.feed || [];
+    SOC.feed.unshift(item);
+    SOC.feed = SOC.feed.slice(0, 120);
+  }
+
+  function createPostText(kind) {
+    if (kind === "workout") {
+      ensureDay(selDate);
+      var s = dayWorkoutSummary(selDate);
+      if (!s.exercises) return "";
+      var top = topPrs(2).map(function(x){ return x.exercise + " " + x.e1rm; }).join(" · ");
+      return "Crushed " + s.exercises + " exercises / " + s.sets + " sets on " + fmtS(selDate) + ". Volume " + Math.round(toDisplayWeight(s.volume)) + " " + weightUnitLabel() + "." + (top ? " Top PRs: " + top : "");
+    }
+    if (kind === "meal") {
+      var n = NLOG[selDate] || [];
+      if (!n.length) return "";
+      var t = dayNutritionTotals(selDate);
+      return "Nutrition check-in " + fmtS(selDate) + ": " + Math.round(t.cal) + " kcal, " + Math.round(t.p) + "g protein, " + Math.round(t.c) + "g carbs, " + Math.round(t.f) + "g fat.";
+    }
+    if (kind === "pr") {
+      var prs = topPrs(1);
+      if (!prs.length) return "";
+      return "New PR spotlight: " + prs[0].exercise + " at " + prs[0].e1rm + " e1RM.";
+    }
+    return "";
+  }
+   
+   function shareTodayWorkout() {
     ensureDay(selDate);
     var s = dayWorkoutSummary(selDate);
     if (!s.exercises) {
@@ -2289,37 +2357,73 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
       var lift = SOC.leaderboardLift || "Bench Press";
       var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
       var board = leaderboardRows(lift);
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Friends & Social</div>';
-      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Track your crew, share sessions, and compare PRs + volume.</div>';
+    h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
+      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Build your profile, manage friends, chat, and share workouts, meals, and PR updates.</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
       h += '<div class="meas-item"><div class="meas-val">'+socialMe.workouts+'</div><div class="meas-lbl">My workouts</div></div>';
       h += '<div class="meas-item"><div class="meas-val">'+socialMe.volume.toLocaleString()+'</div><div class="meas-lbl">Total volume</div></div>';
       h += '</div>';
-      h += '<div class="row" style="gap:6px;align-items:center">';
-      h += '<input class="inp" id="social-name" placeholder="Your display name" style="flex:1" value="'+esc(SOC.profileName || "You")+'">';
-      h += '<button class="btn bs" id="save-social-name" style="padding:8px 10px">Save</button>';
+h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+      h += '<input class="inp" id="social-name" placeholder="Display name" value="'+esc(SOC.profileName || "You")+'">';
+      h += '<input class="inp" id="social-handle" placeholder="@handle" value="'+esc(SOC.handle || "")+'">';
       h += '</div>';
-      h += '<div style="height:10px"></div>';
-      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend</div>';
+ h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="margin-top:6px">'+esc(SOC.bio || "")+'</textarea>';
+      h += '<button class="btn bs" id="save-social-name" style="margin-top:8px;padding:8px 10px">Save profile</button>';
+      h += '</div>';
+
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
+       h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
       h += '<input class="inp" id="friend-name" placeholder="Friend name">';
-      h += '<input class="inp" id="friend-workouts" type="number" min="0" placeholder="Workouts completed">';
+     h += '<input class="inp" id="friend-handle" placeholder="@handle">';
+       h += '<input class="inp" id="friend-workouts" type="number" min="0" placeholder="Workouts completed">';
       h += '<input class="inp" id="friend-bench" type="number" min="0" placeholder="Bench e1RM">';
       h += '<input class="inp" id="friend-squat" type="number" min="0" placeholder="Squat e1RM">';
       h += '<input class="inp" id="friend-deadlift" type="number" min="0" placeholder="Deadlift e1RM">';
       h += '<button class="btn bp" id="add-friend-btn">➕ Add Friend</button>';
       h += '</div>';
-      if ((SOC.friends || []).length) {
-        h += '<div style="height:10px"></div>';
-        (SOC.friends || []).forEach(function(fr, idx){
+       h += '<div style="height:10px"></div>';
+      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Pending requests</div>';
+      h += '<div class="row" style="gap:6px;margin-bottom:8px">';
+      h += '<input class="inp" id="request-name" placeholder="Send request to name" style="flex:1">';
+      h += '<button class="btn bs" id="send-request-btn" style="padding:8px 10px">Send</button>';
+      h += '</div>';
+      if ((SOC.requests || []).length) {
+        (SOC.requests || []).forEach(function(rq, idx){
           h += '<div class="rec-item" style="margin-bottom:6px">';
-          h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
-          h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
+          h += '<div><strong>'+esc(rq.name)+'</strong> <span style="font-size:10px;color:var(--mt)">'+esc(rq.handle || '')+'</span></div>';
+          h += '<div class="row" style="gap:4px">';
+          h += '<button class="btn bs accept-request" data-i="'+idx+'" style="padding:5px 8px;font-size:10px">Accept</button>';
+          h += '<button class="btn decline-request" style="padding:5px 8px;font-size:10px;background:var(--rd);color:#fff" data-i="'+idx+'">Decline</button>';
+          h += '</div></div>';
+        });
+      } else {
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No pending requests.</div>';
+      }
+       if ((SOC.friends || []).length) {
+h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Your friends</div>';
+          (SOC.friends || []).forEach(function(fr, idx){
+          h += '<div class="rec-item" style="margin-bottom:6px">';
+ h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
+             h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
           h += '</div>';
         });
       }
       h += '</div>';
 
+         h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">💬 Messages</div>';
+      h += '<div class="row" style="gap:6px;align-items:center;margin-bottom:6px">';
+      h += '<select class="inp" id="msg-friend" style="flex:1"><option value="">Select friend</option>';
+      (SOC.friends || []).forEach(function(fr){
+        h += '<option value="'+esc(fr.id)+'">'+esc(fr.name)+'</option>';
+      });
+      h += '</select>';
+      h += '<button class="btn bs" id="send-msg-btn" style="padding:8px 10px">Send</button></div>';
+      h += '<textarea class="txta" id="msg-body" placeholder="Send a message, plan a lift, or check in on meals/workouts."></textarea>';
+      h += '<div id="msg-thread" style="margin-top:8px">';
+      h += '<div style="font-size:10px;color:var(--mt)">Pick a friend to view recent messages.</div>';
+      h += '</div></div>';
+       
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
       h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       liftChoices.forEach(function(l){
@@ -2335,14 +2439,19 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
-      h += '<button class="btn bs" id="share-social-summary" style="margin-bottom:8px">Share profile snapshot</button>';
-      if (!(SOC.feed || []).length) {
-        h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout to start the feed.</div>';
-      } else {
-        (SOC.feed || []).slice(0, 12).forEach(function(item){
+ h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      h += '<button class="btn bs" id="share-social-summary" style="padding:8px 10px">Share profile</button>';
+      h += '<button class="btn bs" id="share-workout-post" style="padding:8px 10px">Share workout</button>';
+      h += '<button class="btn bs" id="share-meal-post" style="padding:8px 10px">Share meal</button>';
+      h += '<button class="btn bs" id="share-pr-post" style="padding:8px 10px">Share PR</button>';
+      h += '</div>';
+       if (!(SOC.feed || []).length) {
+h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout, meals, or PRs to start your feed.</div>';
+       } else {
+        (SOC.feed || []).slice(0, 16).forEach(function(item){
           h += '<div class="card" style="margin-bottom:6px;padding:10px">';
-          h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+'</div>';
-          h += '<div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div>';
+ h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+' <span style="font-size:10px;color:var(--mt);font-weight:600">'+esc(item.type || 'update')+'</span></div>';
+           h += '<div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div>';
           h += '<div style="font-size:11px;margin-top:4px">'+esc(item.text || '')+'</div>';
           h += '</div>';
         });
@@ -2878,7 +2987,12 @@ document.querySelectorAll(".food-del").forEach(function(btn){
 var saveSocialName = document.getElementById("save-social-name");
     if (saveSocialName) saveSocialName.onclick = function(){
       var name = ((document.getElementById("social-name")||{}).value || "").trim();
-      SOC.profileName = name || "You";
+     var handle = ((document.getElementById("social-handle")||{}).value || "").trim();
+      var bio = ((document.getElementById("social-bio")||{}).value || "").trim();
+      if (handle && handle.charAt(0) !== "@") handle = "@" + handle;
+       SOC.profileName = name || "You";
+         SOC.handle = handle;
+      SOC.bio = bio;
       saveAll();
       render();
     };
@@ -2887,13 +3001,16 @@ var saveSocialName = document.getElementById("save-social-name");
     if (addFriendBtn) addFriendBtn.onclick = function(){
       var name = ((document.getElementById("friend-name")||{}).value || "").trim();
       if (!name) return alert("Enter a friend name.");
-      SOC.friends = SOC.friends || [];
+      var handle = ((document.getElementById("friend-handle")||{}).value || "").trim();
+      if (handle && handle.charAt(0) !== "@") handle = "@" + handle;
+       SOC.friends = SOC.friends || [];
       var dupe = SOC.friends.some(function(f){ return String(f.name || "").toLowerCase() === name.toLowerCase(); });
       if (dupe) return alert("That friend already exists.");
       SOC.friends.push({
         id: socialId(),
         name: name,
-        workouts: parseInt((document.getElementById("friend-workouts")||{}).value, 10) || 0,
+       handle: handle,
+         workouts: parseInt((document.getElementById("friend-workouts")||{}).value, 10) || 0,
         lifts: {
           "Bench Press": parseFloat((document.getElementById("friend-bench")||{}).value) || 0,
           "Squat": parseFloat((document.getElementById("friend-squat")||{}).value) || 0,
@@ -2904,10 +3021,46 @@ var saveSocialName = document.getElementById("save-social-name");
       render();
     };
 
+     var sendReq = document.getElementById("send-request-btn");
+    if (sendReq) sendReq.onclick = function(){
+      var name = ((document.getElementById("request-name")||{}).value || "").trim();
+      if (!name) return alert("Enter a name for the request.");
+      SOC.requests = SOC.requests || [];
+      SOC.requests.push({ id: socialId(), name: name, handle: "@" + name.toLowerCase().replace(/\s+/g, "") });
+      saveAll();
+      render();
+    };
+
+    document.querySelectorAll(".accept-request").forEach(function(btn){
+      btn.onclick = function(){
+        var i = parseInt(this.getAttribute("data-i"), 10);
+        if (isNaN(i)) return;
+        var rq = (SOC.requests || [])[i];
+        if (!rq) return;
+        SOC.friends = SOC.friends || [];
+        SOC.friends.push({ id: rq.id || socialId(), name: rq.name, handle: rq.handle || "", workouts: 0, lifts: {} });
+        SOC.requests.splice(i, 1);
+        saveAll();
+        render();
+      };
+    });
+
+    document.querySelectorAll(".decline-request").forEach(function(btn){
+      btn.onclick = function(){
+        var i = parseInt(this.getAttribute("data-i"), 10);
+        if (isNaN(i)) return;
+        SOC.requests.splice(i, 1);
+        saveAll();
+        render();
+      };
+    });
+
     document.querySelectorAll(".social-rm").forEach(function(btn){
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
+         var fr = SOC.friends[i];
+        if (fr && SOC.messages) delete SOC.messages[fr.id];
         SOC.friends.splice(i, 1);
         saveAll();
         render();
@@ -2922,23 +3075,83 @@ var saveSocialName = document.getElementById("save-social-name");
       };
     });
 
+     var sendMsgBtn = document.getElementById("send-msg-btn");
+    if (sendMsgBtn) sendMsgBtn.onclick = function(){
+      var fid = ((document.getElementById("msg-friend")||{}).value || "").trim();
+      var body = ((document.getElementById("msg-body")||{}).value || "").trim();
+      if (!fid) return alert("Pick a friend to message.");
+      if (!body) return alert("Write a message first.");
+      SOC.messages = SOC.messages || {};
+      SOC.messages[fid] = SOC.messages[fid] || [];
+      SOC.messages[fid].push({ from: SOC.profileName || "You", text: body, at: Date.now() });
+      SOC.messages[fid] = SOC.messages[fid].slice(-30);
+      var fr = friendById(fid);
+      if (fr) {
+        SOC.messages[fid].push({ from: fr.name, text: "🔥 Nice update — see you at the gym!", at: Date.now() + 1 });
+      }
+      saveAll();
+      render();
+    };
+
     var socialShare = document.getElementById("share-social-summary");
     if (socialShare) socialShare.onclick = function(){
       var me = mySocialSnapshot();
       var top = (me.prs || []).slice(0, 3).map(function(x){ return x.exercise + " " + x.e1rm; }).join(" · ");
-      SOC.feed.unshift({
-        id: socialId(),
-        from: SOC.profileName || "You",
-        type: "profile",
-        date: tod(),
- text: "Profile snapshot: " + me.workouts + " workouts, " + Math.round(toDisplayWeight(me.volume)) + " "+weightUnitLabel()+" volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : ""),
-         at: Date.now()
-      });
-      SOC.feed = SOC.feed.slice(0, 80);
+     pushFeed("profile", "Profile snapshot: " + me.workouts + " workouts, " + Math.round(toDisplayWeight(me.volume)) + " "+weightUnitLabel()+" volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : ""));
       saveAll();
       render();
     };
-     
+
+     var shareWorkoutPost = document.getElementById("share-workout-post");
+    if (shareWorkoutPost) shareWorkoutPost.onclick = function(){
+      var txt = createPostText("workout");
+      if (!txt) return alert("Log a workout for the selected day first.");
+      pushFeed("workout", txt, { date: selDate });
+      saveAll();
+      render();
+    };
+
+    var shareMealPost = document.getElementById("share-meal-post");
+    if (shareMealPost) shareMealPost.onclick = function(){
+      var txt = createPostText("meal");
+      if (!txt) return alert("Log food for the selected day first.");
+      pushFeed("meal", txt, { date: selDate });
+      saveAll();
+      render();
+    };
+
+    var sharePrPost = document.getElementById("share-pr-post");
+    if (sharePrPost) sharePrPost.onclick = function(){
+      var txt = createPostText("pr");
+      if (!txt) return alert("Log some strength PRs first.");
+      pushFeed("pr", txt);
+      saveAll();
+      render();
+    };
+
+    var msgFriendSel = document.getElementById("msg-friend");
+    var msgThread = document.getElementById("msg-thread");
+    function renderMsgThread() {
+      if (!msgFriendSel || !msgThread) return;
+      var fid = msgFriendSel.value;
+      if (!fid) {
+        msgThread.innerHTML = '<div style="font-size:10px;color:var(--mt)">Pick a friend to view recent messages.</div>';
+        return;
+      }
+      var logs = (SOC.messages && SOC.messages[fid]) ? SOC.messages[fid] : [];
+      if (!logs.length) {
+        msgThread.innerHTML = '<div style="font-size:10px;color:var(--mt)">No messages yet. Start the conversation.</div>';
+        return;
+      }
+      msgThread.innerHTML = logs.slice(-8).map(function(m){
+        return '<div class="rec-item" style="margin-bottom:5px"><div><strong>'+esc(m.from || "Athlete")+'</strong><div style="font-size:11px">'+esc(m.text || "")+'</div></div></div>';
+      }).join('');
+    }
+    if (msgFriendSel) {
+      msgFriendSel.onchange = renderMsgThread;
+      renderMsgThread();
+    }
+
     var saveSet = document.getElementById("save-settings");
     if (saveSet) saveSet.onclick = function(){
       var sess = parseInt((document.getElementById("set-sess")||{}).value, 10);
