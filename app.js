@@ -3295,11 +3295,12 @@ var saveSocialName = document.getElementById("save-social-name");
      function sendRealFriendRequest(inputValue) {
       if (!socialReady()) return Promise.resolve(false);
       var uid = myUserId();
-     var q = String(inputValue || "").trim();
-        if (!q) return Promise.resolve(false);
+    var q = String(inputValue || "").trim();
+      if (!q) return Promise.resolve(false)
       var clean = normalizeHandle(q);
       if (!clean) return Promise.resolve(false);
-         var pickBestHandleMatch = function(rows, cleanHandle) {
+         
+        var pickBestHandleMatch = function(rows, cleanHandle) {
         var best = null;
         var wanted = normalizeHandle(cleanHandle);
         (rows || []).forEach(function(row){
@@ -3310,18 +3311,28 @@ var saveSocialName = document.getElementById("save-social-name");
         });
         return best;
       };
+
       var lookupByHandle = function(handleValue) {
-        return sb.from("profiles").select("id,display_name,handle").ilike("handle", handleValue).limit(10).then(function(res){
-          if (res && res.error) throw res.error;
+        return sb.from("profiles").select("id,display_name,handle").ilike("handle", handleValue).limit(20).then(function(res){
+           if (res && res.error) throw res.error;
           return pickBestHandleMatch(res.data, clean);
         });
       };
+        
       var lookup = function() {
         if (socialSupportsHandle) {
-          return lookupByHandle(clean).then(function(found){
-             if (found) return found;
-            return lookupByHandle("@" + clean);
-          }).catch(function(err){
+ var patterns = [clean, "@" + clean, "%" + clean + "%", "%@" + clean + "%"];
+          var found = null;
+          var i = 0;
+          var run = function() {
+            if (found || i >= patterns.length) return Promise.resolve(found);
+            var pat = patterns[i++];
+            return lookupByHandle(pat).then(function(row){
+              if (row) found = row;
+              return run();
+            });
+          };
+          return run().catch(function(err){
             if (isMissingHandleColumnError(err)) {
               socialSupportsHandle = false;
               return lookup();
@@ -3329,14 +3340,16 @@ var saveSocialName = document.getElementById("save-social-name");
             throw err;
           });
         }
-        return sb.from("profiles").select("id,display_name").ilike("display_name", "%" + q + "%").limit(1).then(function(res){
-         if (res && res.error) throw res.error;
+              return sb.from("profiles").select("id,display_name").ilike("display_name", "%" + q + "%").limit(10).then(function(res){
+          if (res && res.error) throw res.error;
           return (res.data && res.data[0]) ? res.data[0] : null;
         });
       };
 
-      return lookup().then(function(target){
-        if (!target) throw new Error("No user found for that handle.");
+     eturn ensureSocialProfile().then(function(){
+        return lookup();
+      }).then(function(target){
+        if (!target) throw new Error("No user found for that handle. Ask them to save their Social profile handle first.");
         if (target.id === uid) throw new Error("You cannot send a friend request to yourself.");
         return sb.from("friendships").select("user_id,friend_id").eq("user_id", uid).eq("friend_id", target.id).maybeSingle().then(function(frRes){
           if (frRes && frRes.error && frRes.error.code !== "PGRST116") throw frRes.error;
