@@ -2601,14 +2601,18 @@ h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="marg
       } else {
         h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No outgoing requests.</div>';
       }
-      if ((SOC.requests || []).length) {
-          h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Your friends</div>';
-        (SOC.requests || []).forEach(function(rq, idx){
+     h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Your friends</div>';
+      if ((SOC.friends || []).length) {
+        (SOC.friends || []).forEach(function(fr, idx){
           h += '<div class="rec-item" style="margin-bottom:6px">';
-h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';          h += '<div class="row" style="gap:4px">';
-          h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
+h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})["Bench Press"])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
+          h += '<div class="row" style="gap:4px">';
+           h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
           h += '</div>';
+                     h += '</div>';
         });
+          } else {
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No friends yet.</div>';
       }
       h += '</div>';
 
