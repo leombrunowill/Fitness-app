@@ -2606,18 +2606,13 @@ h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="marg
       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
-      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend (real user via @handle)</div>';
-      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
-       h += '<input class="inp" id="friend-name" placeholder="Friend handle shortcut (or type @handle)">';
-      h += '<input class="inp" id="friend-handle" placeholder="@handle (real user)">';
-      h += '<button class="btn bp" id="add-friend-btn">➕ Add Friend</button>';
-      h += '</div>';
-      h += '<div style="height:10px"></div>';
-      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Pending requests</div>';
+            h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend request (real user via @handle)</div>';
       h += '<div class="row" style="gap:6px;margin-bottom:8px">';
-      h += '<input class="inp" id="request-name" placeholder="Send request to @handle" style="flex:1">';
-      h += '<button class="btn bs" id="send-request-btn" style="padding:8px 10px">Send</button>';
+      h += '<input class="inp" id="friend-handle" placeholder="@handle" style="flex:1">';
+      h += '<button class="btn bp" id="add-friend-btn" style="padding:8px 10px">Send</button>';
       h += '</div>';
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Use this once to send requests. Pending and sent requests are listed below.</div>';
+      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Pending requests</div>';
       if ((SOC.requests || []).length) {
         (SOC.requests || []).forEach(function(rq, idx){
           h += '<div class="rec-item" style="margin-bottom:6px">';
@@ -3290,11 +3285,17 @@ var saveSocialName = document.getElementById("save-social-name");
         if (!q) return Promise.resolve(false);
       var clean = normalizeHandle(q);
       if (!clean) return Promise.resolve(false);
+        var lookupByHandle = function(handleValue) {
+        return sb.from("profiles").select("id,display_name,handle").eq("handle", handleValue).maybeSingle().then(function(res){
+          if (res && res.error) throw res.error;
+          return res.data;
+        });
+      };
       var lookup = function() {
         if (socialSupportsHandle) {
-          return sb.from("profiles").select("id,display_name,handle").eq("handle", clean).maybeSingle().then(function(res){
-             if (res && res.error) throw res.error;
-            return res.data;
+         return lookupByHandle(clean).then(function(found){
+            if (found) return found;
+            return lookupByHandle("@" + clean);
           }).catch(function(err){
             if (isMissingHandleColumnError(err)) {
               socialSupportsHandle = false;
@@ -3303,7 +3304,7 @@ var saveSocialName = document.getElementById("save-social-name");
             throw err;
           });
         }
-        return sb.from("profiles").select("id,display_name").eq("display_name", clean).maybeSingle().then(function(res){
+        return sb.from("profiles").select("id,display_name").ilike("display_name", q).maybeSingle().then(function(res){
            if (res && res.error) throw res.error;
           return res.data;
         });
@@ -3333,8 +3334,8 @@ var saveSocialName = document.getElementById("save-social-name");
      
     var addFriendBtn = document.getElementById("add-friend-btn");
     if (addFriendBtn) addFriendBtn.onclick = function(){
-       var handleInput = ((document.getElementById("friend-handle")||{}).value || "").trim() || ((document.getElementById("friend-name")||{}).value || "").trim();
-      if (!handleInput) return alert("Enter a user handle (example: @alex).");
+       var handleInput = ((document.getElementById("friend-handle")||{}).value || "").trim();
+       if (!handleInput) return alert("Enter a user handle (example: @alex).");
       if (!socialReady()) return alert("Sign in first to send real friend requests.");
       sendRealFriendRequest(handleInput).then(function(ok){
         if (ok) {
@@ -3345,21 +3346,6 @@ var saveSocialName = document.getElementById("save-social-name");
         alert((err && err.message) ? err.message : "Could not send friend request.");
       });
     };
-
-    var sendReq = document.getElementById("send-request-btn");
-    if (sendReq) sendReq.onclick = function(){
-      var name = ((document.getElementById("request-name")||{}).value || "").trim();
-      if (!name) return alert("Enter a user handle.");
-      if (!socialReady()) return alert("Sign in first to send real friend requests.");
-      sendRealFriendRequest(name).then(function(ok){
-        if (ok) {
-          alert("Friend request sent.");
-          render();
-        }
-      }).catch(function(err){
-        alert((err && err.message) ? err.message : "Could not send friend request.");
-      });
-       };
 
      document.querySelectorAll(".accept-request").forEach(function(btn){
       btn.onclick = function(){
