@@ -2575,32 +2575,7 @@ h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var
       }
       h += '</div>';
 
-         h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">💬 Messages</div>';
-      h += '<div class="row" style="gap:6px;align-items:center;margin-bottom:6px">';
-      h += '<select class="inp" id="msg-friend" style="flex:1"><option value="">Select friend</option>';
-      (SOC.friends || []).forEach(function(fr){
-        h += '<option value="'+esc(fr.id)+'">'+esc(fr.name)+'</option>';
-      });
-      h += '</select>';
-      h += '<button class="btn bs" id="send-msg-btn" style="padding:8px 10px">Send</button></div>';
-      h += '<textarea class="txta" id="msg-body" placeholder="Send a message, plan a lift, or check in on meals/workouts."></textarea>';
-      h += '<div id="msg-thread" style="margin-top:8px">';
-      h += '<div style="font-size:10px;color:var(--mt)">Pick a friend to view recent messages.</div>';
-      h += '</div></div>';
-        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No pending requests.</div>';
-      }
-       if ((SOC.friends || []).length) {
-h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Your friends</div>';
-          (SOC.friends || []).forEach(function(fr, idx){
-          h += '<div class="rec-item" style="margin-bottom:6px">';
- h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
-             h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
-          h += '</div>';
-        });
-      }
-      h += '</div>';
-
-         h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">💬 Messages</div>';
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">💬 Messages</div>';
       h += '<div class="row" style="gap:6px;align-items:center;margin-bottom:6px">';
       h += '<select class="inp" id="msg-friend" style="flex:1"><option value="">Select friend</option>';
       (SOC.friends || []).forEach(function(fr){
@@ -2628,18 +2603,18 @@ h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Your friends
       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
- h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       h += '<button class="btn bs" id="share-social-summary" style="padding:8px 10px">Share profile</button>';
       h += '<button class="btn bs" id="share-workout-post" style="padding:8px 10px">Share workout</button>';
       h += '<button class="btn bs" id="share-meal-post" style="padding:8px 10px">Share meal</button>';
       h += '<button class="btn bs" id="share-pr-post" style="padding:8px 10px">Share PR</button>';
       h += '</div>';
        if (!(SOC.feed || []).length) {
-h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout, meals, or PRs to start your feed.</div>';
+h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout, meals, or PRs to start your feed.</div>';      
        } else {
         (SOC.feed || []).slice(0, 16).forEach(function(item){
-          h += '<div class="card" style="margin-bottom:6px;padding:10px">';
- h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+' <span style="font-size:10px;color:var(--mt);font-weight:600">'+esc(item.type || 'update')+'</span></div>';
+           h += '<div class="card" style="margin-bottom:6px;padding:10px">';
+h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+' <span style="font-size:10px;color:var(--mt);font-weight:600">'+esc(item.type || 'update')+'</span></div>';
            h += '<div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div>';
           h += '<div style="font-size:11px;margin-top:4px">'+esc(item.text || '')+'</div>';
           h += '</div>';
@@ -3176,61 +3151,111 @@ document.querySelectorAll(".food-del").forEach(function(btn){
 var saveSocialName = document.getElementById("save-social-name");
     if (saveSocialName) saveSocialName.onclick = function(){
       var name = ((document.getElementById("social-name")||{}).value || "").trim();
-     var handle = ((document.getElementById("social-handle")||{}).value || "").trim();
+       var handle = ((document.getElementById("social-handle")||{}).value || "").trim();
       var bio = ((document.getElementById("social-bio")||{}).value || "").trim();
-      if (handle && handle.charAt(0) !== "@") handle = "@" + handle;
+      var cleanHandle = normalizeHandle(handle);
        SOC.profileName = name || "You";
-         SOC.handle = handle;
+      SOC.handle = cleanHandle ? ("@" + cleanHandle) : "";
       SOC.bio = bio;
-      saveAll();
+      if (socialReady()) {
+        ensureSocialProfile().then(function(){
+          return loadSocialGraph();
+        }).finally(function(){
+          saveAll();
+          render();
+        });
+        return;
+      } 
+       saveAll();
       render();
     };
 
+     function sendRealFriendRequest(inputValue) {
+      if (!socialReady()) return Promise.resolve(false);
+      var uid = myUserId();
+      var q = String(inputValue || "").trim();
+      if (!q) return Promise.resolve(false);
+      var clean = normalizeHandle(q);
+      if (!clean) return Promise.resolve(false);
+      return sb.from("profiles").select("id,display_name,handle,email").eq("handle", clean).maybeSingle().then(function(res){
+        if (res && res.error) throw res.error;
+        var target = res.data;
+        if (!target) throw new Error("No user found for that handle.");
+        if (target.id === uid) throw new Error("You cannot send a friend request to yourself.");
+        return sb.from("friendships").select("user_id,friend_id").eq("user_id", uid).eq("friend_id", target.id).maybeSingle().then(function(frRes){
+          if (frRes && frRes.error && frRes.error.code !== "PGRST116") throw frRes.error;
+          if (frRes && frRes.data) throw new Error("You are already friends with this user.");
+          return sb.from("friend_requests").select("id").eq("requester_id", uid).eq("addressee_id", target.id).eq("status", "pending").maybeSingle();
+        }).then(function(existingOut){
+          if (existingOut && existingOut.error && existingOut.error.code !== "PGRST116") throw existingOut.error;
+          if (existingOut && existingOut.data) throw new Error("Friend request already sent.");
+          return sb.from("friend_requests").select("id").eq("requester_id", target.id).eq("addressee_id", uid).eq("status", "pending").maybeSingle();
+        }).then(function(existingIn){
+          if (existingIn && existingIn.error && existingIn.error.code !== "PGRST116") throw existingIn.error;
+          if (existingIn && existingIn.data) throw new Error("This user already sent you a request — accept it from Pending requests.");
+          return sb.from("friend_requests").insert({ requester_id: uid, addressee_id: target.id, status: "pending" });
+        });
+      }).then(function(ins){
+        if (ins && ins.error) throw ins.error;
+        return loadSocialGraph().then(function(){ return true; });
+      });
+    }
+     
     var addFriendBtn = document.getElementById("add-friend-btn");
     if (addFriendBtn) addFriendBtn.onclick = function(){
-      var name = ((document.getElementById("friend-name")||{}).value || "").trim();
-      if (!name) return alert("Enter a friend name.");
-      var handle = ((document.getElementById("friend-handle")||{}).value || "").trim();
-      if (handle && handle.charAt(0) !== "@") handle = "@" + handle;
-       SOC.friends = SOC.friends || [];
-      var dupe = SOC.friends.some(function(f){ return String(f.name || "").toLowerCase() === name.toLowerCase(); });
-      if (dupe) return alert("That friend already exists.");
-      SOC.friends.push({
-        id: socialId(),
-        name: name,
-       handle: handle,
-         workouts: parseInt((document.getElementById("friend-workouts")||{}).value, 10) || 0,
-        lifts: {
-          "Bench Press": parseFloat((document.getElementById("friend-bench")||{}).value) || 0,
-          "Squat": parseFloat((document.getElementById("friend-squat")||{}).value) || 0,
-          "Deadlift": parseFloat((document.getElementById("friend-deadlift")||{}).value) || 0
-        }
+       var handleInput = ((document.getElementById("friend-handle")||{}).value || "").trim() || ((document.getElementById("friend-name")||{}).value || "").trim();
+      if (!handleInput) return alert("Enter a user handle (example: @alex).");
+      if (!socialReady()) return alert("Sign in first to send real friend requests.");
+      sendRealFriendRequest(handleInput).then(function(ok){
+        if (ok) {
+          alert("Friend request sent.");
+          render();
+     }
+          }).catch(function(err){
+        alert((err && err.message) ? err.message : "Could not send friend request.");
       });
-      saveAll();
-      render();
     };
 
-     var sendReq = document.getElementById("send-request-btn");
+    var sendReq = document.getElementById("send-request-btn");
     if (sendReq) sendReq.onclick = function(){
       var name = ((document.getElementById("request-name")||{}).value || "").trim();
-      if (!name) return alert("Enter a name for the request.");
-      SOC.requests = SOC.requests || [];
-      SOC.requests.push({ id: socialId(), name: name, handle: "@" + name.toLowerCase().replace(/\s+/g, "") });
-      saveAll();
-      render();
-    };
+      if (!name) return alert("Enter a user handle.");
+      if (!socialReady()) return alert("Sign in first to send real friend requests.");
+      sendRealFriendRequest(name).then(function(ok){
+        if (ok) {
+          alert("Friend request sent.");
+          render();
+        }
+      }).catch(function(err){
+        alert((err && err.message) ? err.message : "Could not send friend request.");
+      });
+       };
 
-    document.querySelectorAll(".accept-request").forEach(function(btn){
+     document.querySelectorAll(".accept-request").forEach(function(btn){
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
         var rq = (SOC.requests || [])[i];
         if (!rq) return;
-        SOC.friends = SOC.friends || [];
-        SOC.friends.push({ id: rq.id || socialId(), name: rq.name, handle: rq.handle || "", workouts: 0, lifts: {} });
-        SOC.requests.splice(i, 1);
-        saveAll();
-        render();
+        if (socialReady() && rq.user_id) {
+          var uid = myUserId();
+          sb.from("friend_requests").update({ status: "accepted" }).eq("id", rq.id).eq("addressee_id", uid).then(function(res){
+            if (res && res.error) throw res.error;
+            return sb.from("friendships").upsert([
+              { user_id: uid, friend_id: rq.user_id },
+              { user_id: rq.user_id, friend_id: uid }
+            ], { onConflict: "user_id,friend_id" });
+          }).then(function(up){
+            if (up && up.error) throw up.error;
+            return loadSocialGraph();
+          }).then(function(){
+            render();
+          }).catch(function(err){
+            alert((err && err.message) ? err.message : "Could not accept request.");
+          });
+          return;
+        }
+        alert("Sign in to accept real friend requests.");
       };
     });
 
@@ -3238,9 +3263,18 @@ var saveSocialName = document.getElementById("save-social-name");
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
-        SOC.requests.splice(i, 1);
-        saveAll();
-        render();
+        var rq = (SOC.requests || [])[i];
+        if (socialReady() && rq && rq.id) {
+          var uid = myUserId();
+          sb.from("friend_requests").update({ status: "declined" }).eq("id", rq.id).eq("addressee_id", uid).then(function(res){
+            if (res && res.error) throw res.error;
+            return loadSocialGraph();
+          }).then(function(){ render(); }).catch(function(err){
+            alert((err && err.message) ? err.message : "Could not decline request.");
+          });
+          return;
+        }
+        alert("Sign in to decline real friend requests.");
       };
     });
 
@@ -3248,8 +3282,21 @@ var saveSocialName = document.getElementById("save-social-name");
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
-         var fr = SOC.friends[i];
-        if (fr && SOC.messages) delete SOC.messages[fr.id];
+        var fr = SOC.friends[i];
+        if (socialReady() && fr && fr.id) {
+          var uid = myUserId();
+          sb.from("friendships").delete().eq("user_id", uid).eq("friend_id", fr.id).then(function(res){
+            if (res && res.error) throw res.error;
+            return sb.from("friendships").delete().eq("user_id", fr.id).eq("friend_id", uid);
+          }).then(function(res2){
+            if (res2 && res2.error) throw res2.error;
+            return loadSocialGraph();
+          }).then(function(){ render(); }).catch(function(err){
+            alert((err && err.message) ? err.message : "Could not remove friend.");
+          });
+          return;
+        }
+        if (fr && SOC.messages) delete SOC.messages[fr.id]; 
         SOC.friends.splice(i, 1);
         saveAll();
         render();
@@ -3264,58 +3311,72 @@ var saveSocialName = document.getElementById("save-social-name");
       };
     });
 
-     var sendMsgBtn = document.getElementById("send-msg-btn");
+    var sendMsgBtn = document.getElementById("send-msg-btn");
     if (sendMsgBtn) sendMsgBtn.onclick = function(){
       var fid = ((document.getElementById("msg-friend")||{}).value || "").trim();
       var body = ((document.getElementById("msg-body")||{}).value || "").trim();
       if (!fid) return alert("Pick a friend to message.");
       if (!body) return alert("Write a message first.");
+      if (socialReady()) {
+        sb.from("messages").insert({ sender_id: myUserId(), recipient_id: fid, body: body }).then(function(res){
+          if (res && res.error) throw res.error;
+          return loadSocialGraph();
+        }).then(function(){ render(); }).catch(function(err){
+          alert((err && err.message) ? err.message : "Could not send message.");
+        });
+        return;
+      }
       SOC.messages = SOC.messages || {};
       SOC.messages[fid] = SOC.messages[fid] || [];
       SOC.messages[fid].push({ from: SOC.profileName || "You", text: body, at: Date.now() });
       SOC.messages[fid] = SOC.messages[fid].slice(-30);
-      var fr = friendById(fid);
-      if (fr) {
-        SOC.messages[fid].push({ from: fr.name, text: "🔥 Nice update — see you at the gym!", at: Date.now() + 1 });
-      }
       saveAll();
       render();
     };
+
+    function createPostAndRefresh(kind, txt, dateVal) {
+      if (socialReady()) {
+        return sb.from("social_posts").insert({
+          user_id: myUserId(),
+          type: kind,
+          body: txt,
+          post_date: dateVal || tod()
+        }).then(function(res){
+          if (res && res.error) throw res.error;
+          return loadSocialGraph();
+        });
+      }
+      pushFeed(kind, txt, { date: dateVal || tod() });
+      return Promise.resolve();
+    }
 
     var socialShare = document.getElementById("share-social-summary");
     if (socialShare) socialShare.onclick = function(){
       var me = mySocialSnapshot();
       var top = (me.prs || []).slice(0, 3).map(function(x){ return x.exercise + " " + x.e1rm; }).join(" · ");
-     pushFeed("profile", "Profile snapshot: " + me.workouts + " workouts, " + Math.round(toDisplayWeight(me.volume)) + " "+weightUnitLabel()+" volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : ""));
-      saveAll();
-      render();
+     var txt = "Profile snapshot: " + me.workouts + " workouts, " + Math.round(toDisplayWeight(me.volume)) + " "+weightUnitLabel()+" volume, " + me.sets + " sets." + (top ? " Top PRs: " + top : "");
+      createPostAndRefresh("profile", txt, tod()).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share profile."); });
     };
 
-     var shareWorkoutPost = document.getElementById("share-workout-post");
+  var shareWorkoutPost = document.getElementById("share-workout-post");
     if (shareWorkoutPost) shareWorkoutPost.onclick = function(){
       var txt = createPostText("workout");
       if (!txt) return alert("Log a workout for the selected day first.");
-      pushFeed("workout", txt, { date: selDate });
-      saveAll();
-      render();
+      createPostAndRefresh("workout", txt, selDate).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share workout."); });
     };
 
     var shareMealPost = document.getElementById("share-meal-post");
     if (shareMealPost) shareMealPost.onclick = function(){
       var txt = createPostText("meal");
       if (!txt) return alert("Log food for the selected day first.");
-      pushFeed("meal", txt, { date: selDate });
-      saveAll();
-      render();
+      createPostAndRefresh("meal", txt, selDate).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share meal."); });
     };
 
     var sharePrPost = document.getElementById("share-pr-post");
     if (sharePrPost) sharePrPost.onclick = function(){
       var txt = createPostText("pr");
       if (!txt) return alert("Log some strength PRs first.");
-      pushFeed("pr", txt);
-      saveAll();
-      render();
+      createPostAndRefresh("pr", txt, tod()).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share PR."); });
     };
 
     var msgFriendSel = document.getElementById("msg-friend");
