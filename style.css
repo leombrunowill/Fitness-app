@@ -77,6 +77,8 @@ canvas{width:100%!important;height:180px!important;border-radius:8px}
 .meas-item{background:var(--c2);border-radius:10px;padding:10px;text-align:center}
 .meas-val{font-size:18px;font-weight:800}.meas-lbl{font-size:9px;color:var(--mt);text-transform:uppercase;margin-top:2px}
 .meas-change{font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;margin-top:2px;display:inline-block}
+.login-wrap{min-height:calc(100vh - 170px);display:flex;align-items:center;justify-content:center;padding:10px 0}
+.login-card{width:min(460px,100%)}
 /* Weekly targets */
 .wt-row{margin-bottom:8px}.wt-head{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px}.wt-name{font-weight:600}.wt-nums{color:var(--mt)}
 .wt-bar{height:8px;background:var(--c2);border-radius:4px;overflow:hidden}.wt-fill{height:100%;border-radius:4px;transition:width .3s}
@@ -132,4 +134,5 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 
 /* Safer sticky header overlap with iOS safe-area */
 .hdr{padding-top: calc(10px + env(safe-area-inset-top))}
+
 
