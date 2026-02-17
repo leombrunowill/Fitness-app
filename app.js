@@ -405,6 +405,7 @@ function openBarcodeScanner(){
   var authReady = false;
   var authBusy = false;
   var authMsg = "";
+   var rememberedDevice = ld("il_remember_device", true);
 var cloudSyncEnabled = true;
   var cloudSaveTimer = null;
   var cloudHydrating = false;
@@ -458,9 +459,18 @@ if (authSession && authSession.user) {
     return { email: email, password: password };
   }
 
+   function isSignedIn() {
+    return !!(authSession && authSession.user);
+  }
+   
   function runAuthAction(kind) {
     if (!sb || authBusy) return;
-    var creds = authCredsFromUI();
+  var rememberEl = document.getElementById("auth-remember");
+    if (rememberEl) {
+      rememberedDevice = !!rememberEl.checked;
+      sv("il_remember_device", rememberedDevice);
+    }
+     var creds = authCredsFromUI();
     if (!creds.email || !creds.password) {
       authMsg = "Enter email and password.";
       render();
@@ -740,6 +750,41 @@ function normalizeWeightUnit(unit) {
     h += "</div>";
     if (authSession && authSession.user) h += "<button class=\"btn bs\" id=\"auth-signout-top\" style=\"padding:6px 10px;font-size:11px\">Sign out</button>";
     h += "</div></div>";
+    return h;
+  }
+
+   function renderLoginScreen() {
+    var q = todayQuote();
+    var h = "";
+    h += '<div class="login-wrap">';
+    h += '<div class="card login-card">';
+    h += '<div style="text-align:center;margin-bottom:10px">';
+    h += '<div style="font-size:24px">🔐</div>';
+    h += '<div style="font-size:20px;font-weight:900">Welcome to Iron Log</div>';
+    h += '<div style="font-size:12px;color:var(--mt);margin-top:4px">Sign in to access your workouts on this device.</div>';
+    h += '</div>';
+    h += '<div class="quote-box" style="margin-bottom:10px"><div class="quote-text">"'+esc(q.t)+'"</div><div class="quote-author">— '+esc(q.a)+'</div></div>';
+
+    if (!authReady) {
+      h += '<div style="font-size:12px;color:var(--mt);text-align:center">Checking saved login…</div>';
+    } else if (!sb) {
+      h += '<div style="font-size:12px;color:var(--rd);text-align:center">'+esc(authMsg || 'Authentication is unavailable right now.')+'</div>';
+    } else {
+      h += '<input class="inp" id="auth-email" type="email" placeholder="you@example.com" style="margin-bottom:8px">';
+      h += '<input class="inp" id="auth-password" type="password" placeholder="Password" style="margin-bottom:8px">';
+      h += '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mt);margin-bottom:10px">';
+      h += '<input id="auth-remember" type="checkbox" '+(rememberedDevice ? 'checked' : '')+'> Remember this device';
+      h += '</label>';
+      h += '<div class="row" style="gap:8px">';
+      h += '<button class="btn bp" id="auth-signin" style="flex:1">Sign in</button>';
+      h += '<button class="btn bs" id="auth-signup" style="flex:1">Create account</button>';
+      h += '</div>';
+      if (authBusy) h += '<div style="font-size:10px;color:var(--mt);margin-top:8px">Working…</div>';
+      if (authMsg) h += '<div style="font-size:10px;color:var(--mt);margin-top:6px">'+esc(authMsg)+'</div>';
+    }
+
+    h += '</div>';
+    h += '</div>';
     return h;
   }
    
@@ -1842,15 +1887,23 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
 
     var app = document.getElementById("app");
     if (!app) return;
+var nav = document.querySelector(".bnav");
+    var timerBar = document.getElementById("tbar");
+    var loggedIn = isSignedIn();
 
+    if (nav) nav.style.display = loggedIn ? "" : "none";
+    if (!loggedIn && timerBar) timerBar.style.display = "none";
+     
     var h = "";
 
-    h += renderAuthStatusCard();
-     
-     if (view === "log") {
-      var q = todayQuote();
-      h += '<div class="quote-box"><div class="quote-text">"'+esc(q.t)+'"</div><div class="quote-author">— '+esc(q.a)+'</div></div>';
+   if (!loggedIn) {
+      h += renderLoginScreen();
+      app.innerHTML = h;
+      bindEvents();
+      return;
     }
+
+      h += renderAuthStatusCard();
 
     h += '<div class="card" style="padding:8px">';
     h += '<div class="row" style="justify-content:space-between;align-items:center">';
