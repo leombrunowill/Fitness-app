@@ -172,6 +172,41 @@ function saveBarcodeMap(){ sv("il_barcode_map", BARCODE_MAP); }
     });
   }
 
+   function sanitizeWorkoutState() {
+    if (!W || typeof W !== "object" || Array.isArray(W)) W = {};
+    Object.keys(W).forEach(function(ds){
+      if (!Array.isArray(W[ds])) {
+        W[ds] = [];
+        return;
+      }
+      W[ds] = W[ds].filter(function(ex){
+        return ex && typeof ex === "object";
+      }).map(function(ex){
+        var sets = Array.isArray(ex.sets) ? ex.sets.filter(function(st){ return st && typeof st === "object"; }) : [];
+        return {
+          group: String(ex.group || "Chest"),
+          exercise: String(ex.exercise || "Exercise"),
+          equipment: ex.equipment ? String(ex.equipment) : "",
+          note: ex.note ? String(ex.note) : "",
+          setStyle: ex.setStyle === "drop" || ex.setStyle === "super" ? ex.setStyle : "standard",
+          sets: sets.map(function(st){
+            return {
+              r: Math.max(0, parseInt(st.r, 10) || 0),
+              w: Math.max(0, +st.w || 0),
+              t: Math.max(0, +st.t || 0),
+              d: Math.max(0, +st.d || 0)
+            };
+          })
+        };
+      });
+    });
+
+    if (!NLOG || typeof NLOG !== "object" || Array.isArray(NLOG)) NLOG = {};
+    Object.keys(NLOG).forEach(function(ds){
+      if (!Array.isArray(NLOG[ds])) NLOG[ds] = [];
+    });
+  }
+
 function findFoodKeyByName(name){
   var q = foodKey(name || "");
   if (!q) return "";
@@ -691,7 +726,8 @@ function normalizeWeightUnit(unit) {
       SOC = normalizeSOC(row.soc || {});
       RLIB = Array.isArray(row.rlib) ? row.rlib : [];
       RSCHED = row.rsched || {};
-      sanitizeNutritionState();
+           sanitizeWorkoutState();
+       sanitizeNutritionState();
       normalizeRoutines();
       syncProgressPRFilter();
       saveAll();
@@ -3444,6 +3480,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
           if (data.NLOG) NLOG = data.NLOG;
           if (data.NFOODS) NFOODS = data.NFOODS;
           if (data.USER) USER = data.USER;
+                     sanitizeWorkoutState();
           sanitizeNutritionState();
           if (data.TH) TH = data.TH;
            if (data.SOC) SOC = normalizeSOC(data.SOC);
@@ -3465,6 +3502,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
  W = {}; BW = {}; PR = {}; NLOG = {}; SOC = normalizeSOC(); RLIB = DEFAULT_ROUTINES.slice(); RSCHED = {};
+            sanitizeWorkoutState();
        sanitizeNutritionState();
       saveAll();
       render();
@@ -3476,7 +3514,8 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
   });
 
   applyTheme();
-  sanitizeNutritionState();
+    sanitizeWorkoutState();
+   sanitizeNutritionState();
 normalizeRoutines();  
 saveAll();
    initAuth();
