@@ -3307,8 +3307,8 @@ var saveSocialName = document.getElementById("save-social-name");
       };
       var lookup = function() {
         if (socialSupportsHandle) {
-         eturn lookupByHandle(clean).then(function(found){
-            if (found) return found;
+          return lookupByHandle(clean).then(function(found){
+             if (found) return found;
             return lookupByHandle("@" + clean);
           }).catch(function(err){
             if (isMissingHandleColumnError(err)) {
