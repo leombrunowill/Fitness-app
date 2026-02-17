@@ -3299,10 +3299,21 @@ var saveSocialName = document.getElementById("save-social-name");
         if (!q) return Promise.resolve(false);
       var clean = normalizeHandle(q);
       if (!clean) return Promise.resolve(false);
-          var lookupByHandle = function(handleValue) {
-        return sb.from("profiles").select("id,display_name,handle").eq("handle", handleValue).maybeSingle().then(function(res){
+         var pickBestHandleMatch = function(rows, cleanHandle) {
+        var best = null;
+        var wanted = normalizeHandle(cleanHandle);
+        (rows || []).forEach(function(row){
+          if (!row || !row.id) return;
+          if (!best) best = row;
+          var rowHandle = normalizeHandle(row.handle || "");
+          if (rowHandle && rowHandle === wanted) best = row;
+        });
+        return best;
+      };
+      var lookupByHandle = function(handleValue) {
+        return sb.from("profiles").select("id,display_name,handle").ilike("handle", handleValue).limit(10).then(function(res){
           if (res && res.error) throw res.error;
-          return res.data;
+          return pickBestHandleMatch(res.data, clean);
         });
       };
       var lookup = function() {
@@ -3318,9 +3329,9 @@ var saveSocialName = document.getElementById("save-social-name");
             throw err;
           });
         }
-return sb.from("profiles").select("id,display_name").ilike("display_name", q).maybeSingle().then(function(res){
-   if (res && res.error) throw res.error;
-          return res.data;
+        return sb.from("profiles").select("id,display_name").ilike("display_name", "%" + q + "%").limit(1).then(function(res){
+         if (res && res.error) throw res.error;
+          return (res.data && res.data[0]) ? res.data[0] : null;
         });
       };
 
