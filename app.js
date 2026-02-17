@@ -901,8 +901,8 @@ var cols = ["id", "display_name"];
     return ensureSocialProfile().then(function(){
       return Promise.all([
         sb.from("profiles").select(profileSelectColumns()).eq("id", uid).maybeSingle(),
-         sb.from("friendships").select("friend_id").eq("user_id", uid),
-        sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("addressee_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
+        sb.from("friendships").select("user_id,friend_id").or("user_id.eq." + uid + ",friend_id.eq." + uid),
+         sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("addressee_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
         sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("requester_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
         sb.from("messages").select("id,sender_id,recipient_id,body,created_at").or("sender_id.eq." + uid + ",recipient_id.eq." + uid).order("created_at", { ascending: false }).limit(200)
       ]);
@@ -919,8 +919,12 @@ var cols = ["id", "display_name"];
       SOC.handle = safeProfileHandle(myProfile) || (SOC.handle || "");
 SOC.bio = socialSupportsBio ? (myProfile.bio || SOC.bio || "") : (SOC.bio || "");
        
-      var friendIds = (frRes.data || []).map(function(r){ return r.friend_id; }).filter(Boolean);
-      var reqRows = rqRes.data || [];
+var friendIds = [];
+      (frRes.data || []).forEach(function(r){
+        var fid = (r.user_id === uid) ? r.friend_id : r.user_id;
+        if (fid && friendIds.indexOf(fid) === -1) friendIds.push(fid);
+      });
+       var reqRows = rqRes.data || [];
       var sentReqRows = sentRqRes.data || [];
       var reqUserIds = reqRows.map(function(r){ return r.requester_id; }).filter(Boolean);
       var sentUserIds = sentReqRows.map(function(r){ return r.addressee_id; }).filter(Boolean);
@@ -2599,25 +2603,25 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
     if (view === "more") {
       h += '<div class="sect">⚡ More</div>';
 
-       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🔐 Account</div>';
-      if (!authReady) {
-        h += '<div style="font-size:11px;color:var(--mt)">Checking session…</div>';
-      } else if (authBusy) {
-        h += '<div style="font-size:11px;color:var(--mt)">Working…</div>';
-      } else if (!sb) {
-        h += '<div style="font-size:11px;color:var(--mt)">' + esc(authMsg || "Auth not configured.") + '</div>';
-      } else if (authSession && authSession.user) {
-       h += '<div style="font-size:11px;color:var(--mt)">You are signed in. Use the top status card to manage this session.</div>';
-      } else {
-        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:6px">Create an account or sign in with email/password.</div>';
-        h += '<input class="inp" id="auth-email" type="email" placeholder="you@example.com" style="margin-bottom:6px">';
-        h += '<input class="inp" id="auth-password" type="password" placeholder="Password" style="margin-bottom:8px">';
-        h += '<div class="row" style="gap:6px">';
-        h += '<button class="btn bp" id="auth-signup" style="padding:8px 10px">Sign up</button>';
-        h += '<button class="btn bs" id="auth-signin" style="padding:8px 10px">Sign in</button>';
+       if (!authSession || !authSession.user) {
+        h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🔐 Account</div>';
+        if (!authReady) {
+          h += '<div style="font-size:11px;color:var(--mt)">Checking session…</div>';
+        } else if (authBusy) {
+          h += '<div style="font-size:11px;color:var(--mt)">Working…</div>';
+        } else if (!sb) {
+          h += '<div style="font-size:11px;color:var(--mt)">' + esc(authMsg || "Auth not configured.") + '</div>';
+        } else {
+          h += '<div style="font-size:10px;color:var(--mt);margin-bottom:6px">Create an account or sign in with email/password.</div>';
+          h += '<input class="inp" id="auth-email" type="email" placeholder="you@example.com" style="margin-bottom:6px">';
+          h += '<input class="inp" id="auth-password" type="password" placeholder="Password" style="margin-bottom:8px">';
+          h += '<div class="row" style="gap:6px">';
+          h += '<button class="btn bp" id="auth-signup" style="padding:8px 10px">Sign up</button>';
+          h += '<button class="btn bs" id="auth-signin" style="padding:8px 10px">Sign in</button>';
+          h += '</div>';
+        }
         h += '</div>';
       }
-      h += '</div>';
        
        var socialMe = mySocialSnapshot();
       var lift = SOC.leaderboardLift || "Bench Press";
@@ -3420,10 +3424,10 @@ var rqId = parseInt(rq.id, 10);
           }
           acceptQuery.then(function(res){
            if (res && res.error) throw res.error;
-            return sb.from("friendships").upsert([
-              { user_id: uid, friend_id: rq.user_id },
-              { user_id: rq.user_id, friend_id: uid }
-            ], { onConflict: "user_id,friend_id" });
+            return sb.from("friendships").upsert(
+               { user_id: uid, friend_id: rq.user_id },
+              { onConflict: "user_id,friend_id" }
+            );
           }).then(function(up){
             if (up && up.error) throw up.error;
             return loadSocialGraph();
