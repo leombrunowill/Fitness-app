@@ -815,6 +815,7 @@ function normalizeWeightUnit(unit) {
   }
 
    var socialSupportsHandle = true;
+      var socialSupportsBio = true;
   function isMissingHandleColumnError(err) {
     var msg = String((err && err.message) || "").toLowerCase();
     var details = String((err && err.details) || "").toLowerCase();
@@ -822,8 +823,18 @@ function normalizeWeightUnit(unit) {
     return msg.indexOf("profiles.handle") >= 0 || details.indexOf("profiles.handle") >= 0 || code === "42703" || code === "pgrst204";
   }
 
+   function isMissingBioColumnError(err) {
+    var msg = String((err && err.message) || "").toLowerCase();
+    var details = String((err && err.details) || "").toLowerCase();
+    var code = String((err && err.code) || "").toLowerCase();
+    return msg.indexOf("profiles.bio") >= 0 || details.indexOf("profiles.bio") >= 0 || code === "42703" || code === "pgrst204";
+  }
+   
    function profileSelectColumns() {
-return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bio";
+var cols = ["id", "display_name"];
+    if (socialSupportsHandle) cols.push("handle");
+    if (socialSupportsBio) cols.push("bio");
+    return cols.join(",");
    }
 
   function safeProfileHandle(p) {
@@ -843,17 +854,22 @@ return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bi
     var payload = {
      id: uid,
       display_name: display,
-      bio: bio || null,
       updated_at: new Date().toISOString()
 };
     if (socialSupportsHandle) payload.handle = handle || null;
-
+    if (socialSupportsBio) payload.bio = bio || null;
+     
     return sb.from("profiles").upsert(payload, { onConflict: "id" }).then(function(res){ if (res && res.error) throw res.error; })
       .catch(function(err){
         if (socialSupportsHandle && isMissingHandleColumnError(err)) {
           socialSupportsHandle = false;
           delete payload.handle;
           return sb.from("profiles").upsert(payload, { onConflict: "id" }).then(function(retry){ if (retry && retry.error) throw retry.error; });
+        }
+         if (socialSupportsBio && isMissingBioColumnError(err)) {
+          socialSupportsBio = false;
+          delete payload.bio;
+          return sb.from("profiles").upsert(payload, { onConflict: "id" }).then(function(retryBio){ if (retryBio && retryBio.error) throw retryBio.error; });
         }
         throw err;
       })
@@ -901,8 +917,8 @@ return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bi
       var myProfile = meRes.data || {};
       if (myProfile.display_name) SOC.profileName = myProfile.display_name;
       SOC.handle = safeProfileHandle(myProfile) || (SOC.handle || "");
-       SOC.bio = myProfile.bio || SOC.bio || "";
-
+SOC.bio = socialSupportsBio ? (myProfile.bio || SOC.bio || "") : (SOC.bio || "");
+       
       var friendIds = (frRes.data || []).map(function(r){ return r.friend_id; }).filter(Boolean);
       var reqRows = rqRes.data || [];
       var sentReqRows = sentRqRes.data || [];
@@ -975,8 +991,12 @@ return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bi
     }).then(function(){
       sv("il_social", SOC);
     }).catch(function(err){
-       if (socialSupportsHandle && isMissingHandleColumnError(err)) {
-        socialSupportsHandle = false;
+      if (socialSupportsHandle && isMissingHandleColumnError(err)) {
+         socialSupportsHandle = false;
+        return loadSocialGraph();
+      }
+        if (socialSupportsBio && isMissingBioColumnError(err)) {
+        socialSupportsBio = false;
         return loadSocialGraph();
       }
       authMsg = "Social load failed: " + ((err && err.message) ? err.message : "Set up social tables in Supabase.");
@@ -2587,9 +2607,7 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
       } else if (!sb) {
         h += '<div style="font-size:11px;color:var(--mt)">' + esc(authMsg || "Auth not configured.") + '</div>';
       } else if (authSession && authSession.user) {
-        h += '<div style="font-size:12px;font-weight:700">Signed in as '+esc(authSession.user.email || "")+'</div>';
-        h += '<div style="font-size:10px;color:var(--mt);margin-top:4px">Session is active in this browser.</div>';
-        h += '<button class="btn bs" id="auth-signout" style="margin-top:10px;padding:8px 10px">Sign out</button>';
+       h += '<div style="font-size:11px;color:var(--mt)">You are signed in. Use the top status card to manage this session.</div>';
       } else {
         h += '<div style="font-size:10px;color:var(--mt);margin-bottom:6px">Create an account or sign in with email/password.</div>';
         h += '<input class="inp" id="auth-email" type="email" placeholder="you@example.com" style="margin-bottom:6px">';
@@ -3346,8 +3364,8 @@ var saveSocialName = document.getElementById("save-social-name");
         });
       };
 
-     eturn ensureSocialProfile().then(function(){
-        return lookup();
+      return ensureSocialProfile().then(function(){
+         return lookup();
       }).then(function(target){
         if (!target) throw new Error("No user found for that handle. Ask them to save their Social profile handle first.");
         if (target.id === uid) throw new Error("You cannot send a friend request to yourself.");
