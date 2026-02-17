@@ -443,6 +443,7 @@ function openBarcodeScanner(){
    var rememberedDevice = ld("il_remember_device", true);
 var cloudSyncEnabled = true;
   var cloudSaveTimer = null;
+     var socialProfileSaveTimer = null;
   var cloudHydrating = false;
    
   function initAuth() {
@@ -693,6 +694,7 @@ function normalizeWeightUnit(unit) {
      sv("il_social", SOC);
      if (authSession && authSession.user) {
       scheduleCloudUpsert();
+              scheduleSocialProfileUpsert();
     }
   }
 
@@ -762,6 +764,18 @@ function normalizeWeightUnit(unit) {
     }, 500);
   }
 
+   
+    function scheduleSocialProfileUpsert() {
+    if (!socialReady()) return;
+    if (socialProfileSaveTimer) clearTimeout(socialProfileSaveTimer);
+    socialProfileSaveTimer = setTimeout(function() {
+      ensureSocialProfile().catch(function(err) {
+        authMsg = "Profile sync failed: " + ((err && err.message) ? err.message : "Unknown error");
+        render();
+      });
+    }, 500);
+  }
+   
   function cloudLoad() {
     if (!cloudSyncEnabled) return Promise.resolve();
     if (!sb || !authSession || !authSession.user) return Promise.resolve();
@@ -2606,12 +2620,12 @@ h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="marg
       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
-            h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend request (real user via @handle)</div>';
-      h += '<div class="row" style="gap:6px;margin-bottom:8px">';
+h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend request (real user via @handle)</div>';
+       h += '<div class="row" style="gap:6px;margin-bottom:8px">';
       h += '<input class="inp" id="friend-handle" placeholder="@handle" style="flex:1">';
       h += '<button class="btn bp" id="add-friend-btn" style="padding:8px 10px">Send</button>';
       h += '</div>';
-        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Use this once to send requests. Pending and sent requests are listed below.</div>';
+            h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">Use this once to send requests. Pending and sent requests are listed below.</div>';
       h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Pending requests</div>';
       if ((SOC.requests || []).length) {
         (SOC.requests || []).forEach(function(rq, idx){
@@ -3285,7 +3299,7 @@ var saveSocialName = document.getElementById("save-social-name");
         if (!q) return Promise.resolve(false);
       var clean = normalizeHandle(q);
       if (!clean) return Promise.resolve(false);
-        var lookupByHandle = function(handleValue) {
+          var lookupByHandle = function(handleValue) {
         return sb.from("profiles").select("id,display_name,handle").eq("handle", handleValue).maybeSingle().then(function(res){
           if (res && res.error) throw res.error;
           return res.data;
@@ -3293,7 +3307,7 @@ var saveSocialName = document.getElementById("save-social-name");
       };
       var lookup = function() {
         if (socialSupportsHandle) {
-         return lookupByHandle(clean).then(function(found){
+         eturn lookupByHandle(clean).then(function(found){
             if (found) return found;
             return lookupByHandle("@" + clean);
           }).catch(function(err){
@@ -3304,8 +3318,8 @@ var saveSocialName = document.getElementById("save-social-name");
             throw err;
           });
         }
-        return sb.from("profiles").select("id,display_name").ilike("display_name", q).maybeSingle().then(function(res){
-           if (res && res.error) throw res.error;
+return sb.from("profiles").select("id,display_name").ilike("display_name", q).maybeSingle().then(function(res){
+   if (res && res.error) throw res.error;
           return res.data;
         });
       };
