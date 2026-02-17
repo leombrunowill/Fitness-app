@@ -2152,19 +2152,20 @@ var nav = document.querySelector(".bnav");
     var timerBar = document.getElementById("tbar");
     var loggedIn = isSignedIn();
 
-    if (nav) nav.style.display = loggedIn ? "" : "none";
-    if (!loggedIn && timerBar) timerBar.style.display = "none";
-     
-    var h = "";
+    if (nav) nav.style.display = "";
+     if (!loggedIn && timerBar) timerBar.style.display = "none";
+    
+var h = "";
+    h += renderAuthStatusCard();
 
-   if (!loggedIn) {
-      h += renderLoginScreen();
-      app.innerHTML = h;
-      bindEvents();
-      return;
+    if (!loggedIn) {
+      h += '<div class="card" style="margin-bottom:8px">';
+      h += '<div style="font-size:12px;font-weight:700">You\'re using offline mode.</div>';
+      h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">You can log workouts and navigate all screens without signing in. Sign in anytime for cloud sync and social features.</div>';
+      h += '<div style="margin-top:8px">';
+      h += '<button class="btn bs" id="open-login-screen" style="padding:6px 10px;font-size:11px">Sign in / Create account</button>';
+      h += '</div></div>';
     }
-
-      h += renderAuthStatusCard();
 
     h += '<div class="card" style="padding:8px">';
     h += '<div class="row" style="justify-content:space-between;align-items:center">';
@@ -2890,7 +2891,34 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     });
   }
 
-  // -----------------------------
+  function openAuthDialog() {
+    var html = '';
+    html += '<div style="padding:14px;min-width:280px;max-width:420px">';
+    html += '<div style="font-size:16px;font-weight:900;margin-bottom:10px">🔐 Sign in</div>';
+    html += '<input class="inp" id="auth-email" type="email" placeholder="you@example.com" style="margin-bottom:8px">';
+    html += '<input class="inp" id="auth-password" type="password" placeholder="Password" style="margin-bottom:8px">';
+    html += '<label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mt);margin-bottom:10px">';
+    html += '<input id="auth-remember" type="checkbox" ' + (rememberedDevice ? 'checked' : '') + '> Remember this device';
+    html += '</label>';
+    html += '<div class="row" style="gap:8px">';
+    html += '<button class="btn bp" id="auth-signin" style="flex:1">Sign in</button>';
+    html += '<button class="btn bs" id="auth-signup" style="flex:1">Create account</button>';
+    html += '</div>';
+    if (authMsg) html += '<div style="font-size:10px;color:var(--mt);margin-top:6px">' + esc(authMsg) + '</div>';
+    html += '<div class="row" style="justify-content:flex-end;margin-top:12px">';
+    html += '<button class="btn bs" id="auth-close">Close</button>';
+    html += '</div></div>';
+    showModal(html);
+
+    var close = document.getElementById('auth-close');
+    if (close) close.onclick = closeModal;
+    var signIn = document.getElementById('auth-signin');
+    if (signIn) signIn.onclick = function(){ runAuthAction('signin'); };
+    var signUp = document.getElementById('auth-signup');
+    if (signUp) signUp.onclick = function(){ runAuthAction('signup'); };
+  }
+   
+   // -----------------------------
   // Events
   // -----------------------------
   function bindEvents() {
@@ -2919,6 +2947,11 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
       btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
     });
 
+     var openLoginScreenBtn = document.getElementById("open-login-screen");
+    if (openLoginScreenBtn) openLoginScreenBtn.onclick = function(){
+      openAuthDialog();
+    };
+     
     var authSignUpBtn = document.getElementById("auth-signup");
     if (authSignUpBtn) authSignUpBtn.onclick = function(){ runAuthAction("signup"); };
 
