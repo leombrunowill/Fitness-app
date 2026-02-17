@@ -428,8 +428,8 @@ var cloudSyncEnabled = true;
         authSession = (res && res.data && res.data.session) ? res.data.session : null;
         authReady = true;
 if (authSession && authSession.user) {
-          cloudLoad().finally(function(){ render(); });
-        } else {
+cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
+} else {
           render();
         }
       }).catch(function(err) {
@@ -442,8 +442,8 @@ if (authSession && authSession.user) {
         authSession = session || null;
         if (authSession) authMsg = "";
 if (authSession && authSession.user) {
-          cloudLoad().finally(function(){ render(); });
-        } else {
+cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
+} else {
           render();
         }
       });
@@ -558,24 +558,26 @@ function normalizeUSER(u) {
       autoGoals: src.autoGoals !== false
     };
   }
-  var SOC = ld("il_social", {
+var SOC = ld("il_social", {
    profileName: "You",
      handle: "",
     bio: "",
     friends: [],
      requests: [],
+    sentRequests: [],
     messages: {},
     feed: [],
     leaderboardLift: "Bench Press"
   });
   function normalizeSOC(s) {
     s = s || {};
-    var friends = Array.isArray(s.friends) ? s.friends : [];
+ var friends = Array.isArray(s.friends) ? s.friends : [];
     var requests = Array.isArray(s.requests) ? s.requests : [];
-    var messages = (s.messages && typeof s.messages === "object") ? s.messages : {};
+var sentRequests = Array.isArray(s.sentRequests) ? s.sentRequests : [];
+var messages = (s.messages && typeof s.messages === "object") ? s.messages : {};     
      return {
       profileName: String(s.profileName || "You"),
-handle: String(s.handle || ""),
+  handle: String(s.handle || ""),
       bio: String(s.bio || ""),
       friends: friends.map(function(fr){
         return {
@@ -589,6 +591,14 @@ handle: String(s.handle || ""),
       requests: requests.map(function(rq){
         return {
           id: rq && rq.id ? String(rq.id) : socialId(),
+          name: String((rq && rq.name) || "Athlete"),
+          handle: String((rq && rq.handle) || "")
+        };
+      }),
+      sentRequests: sentRequests.map(function(rq){
+        return {
+          id: rq && rq.id ? String(rq.id) : socialId(),
+          user_id: rq && rq.user_id ? String(rq.user_id) : "",
           name: String((rq && rq.name) || "Athlete"),
           handle: String((rq && rq.handle) || "")
         };
@@ -736,6 +746,153 @@ function normalizeWeightUnit(unit) {
       });
   }
 
+
+   function myUserId() {
+    return (authSession && authSession.user && authSession.user.id) ? authSession.user.id : null;
+  }
+
+  function normalizeHandle(v) {
+    var h = String(v || "").trim().toLowerCase();
+    if (!h) return "";
+    if (h.charAt(0) === "@") h = h.slice(1);
+    h = h.replace(/[^a-z0-9_.]/g, "");
+    return h;
+  }
+
+  function socialReady() {
+    return !!(sb && myUserId());
+  }
+
+  function ensureSocialProfile() {
+    if (!socialReady()) return Promise.resolve();
+    var uid = myUserId();
+    var display = (SOC.profileName || (authSession.user.email || "Athlete")).trim();
+    var handle = normalizeHandle(SOC.handle || (authSession.user.email || "").split("@")[0]);
+    var bio = String(SOC.bio || "").trim();
+    return sb.from("profiles").upsert({
+      id: uid,
+      email: authSession.user.email || null,
+      display_name: display,
+      handle: handle || null,
+      bio: bio || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "id" }).then(function(res){ if (res && res.error) throw res.error; })
+      .catch(function(err){
+        authMsg = "Social profile sync failed: " + ((err && err.message) ? err.message : "Unknown error");
+      });
+  }
+
+  function fetchProfilesByIds(ids) {
+    ids = (ids || []).filter(Boolean);
+    if (!ids.length || !sb) return Promise.resolve({});
+    return sb.from("profiles").select("id,display_name,handle,bio,email").in("id", ids).then(function(res){
+      if (res && res.error) throw res.error;
+      var map = {};
+      (res.data || []).forEach(function(p){ map[p.id] = p; });
+      return map;
+    });
+  }
+
+  function loadSocialGraph() {
+    if (!socialReady()) return Promise.resolve();
+    var uid = myUserId();
+    return ensureSocialProfile().then(function(){
+      return Promise.all([
+        sb.from("profiles").select("id,display_name,handle,bio,email").eq("id", uid).maybeSingle(),
+        sb.from("friendships").select("friend_id").eq("user_id", uid),
+        sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("addressee_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
+        sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("requester_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
+        sb.from("messages").select("id,sender_id,recipient_id,body,created_at").or("sender_id.eq." + uid + ",recipient_id.eq." + uid).order("created_at", { ascending: false }).limit(200)
+      ]);
+    }).then(function(results){
+      var meRes = results[0], frRes = results[1], rqRes = results[2], sentRqRes = results[3], msgRes = results[4];
+      if (meRes && meRes.error) throw meRes.error;
+      if (frRes && frRes.error) throw frRes.error;
+      if (rqRes && rqRes.error) throw rqRes.error;
+      if (sentRqRes && sentRqRes.error) throw sentRqRes.error;
+      if (msgRes && msgRes.error) throw msgRes.error;
+
+      var myProfile = meRes.data || {};
+      if (myProfile.display_name) SOC.profileName = myProfile.display_name;
+      SOC.handle = myProfile.handle ? ("@" + String(myProfile.handle).replace(/^@/, "")) : (SOC.handle || "");
+      SOC.bio = myProfile.bio || SOC.bio || "";
+
+      var friendIds = (frRes.data || []).map(function(r){ return r.friend_id; }).filter(Boolean);
+      var reqRows = rqRes.data || [];
+      var sentReqRows = sentRqRes.data || [];
+      var reqUserIds = reqRows.map(function(r){ return r.requester_id; }).filter(Boolean);
+      var sentUserIds = sentReqRows.map(function(r){ return r.addressee_id; }).filter(Boolean);
+      var allProfileIds = friendIds.concat(reqUserIds).concat(sentUserIds);
+      return fetchProfilesByIds(allProfileIds).then(function(pmap){
+        SOC.friends = friendIds.map(function(fid){
+          var p = pmap[fid] || {};
+          return {
+            id: fid,
+            name: p.display_name || p.handle || p.email || "Athlete",
+            handle: p.handle ? ("@" + String(p.handle).replace(/^@/, "")) : "",
+            workouts: 0,
+            lifts: {}
+          };
+        });
+        SOC.requests = reqRows.map(function(r){
+          var p = pmap[r.requester_id] || {};
+          return {
+            id: r.id,
+            user_id: r.requester_id,
+            name: p.display_name || p.handle || p.email || "Athlete",
+            handle: p.handle ? ("@" + String(p.handle).replace(/^@/, "")) : ""
+          };
+        });
+        SOC.sentRequests = sentReqRows.map(function(r){
+          var p = pmap[r.addressee_id] || {};
+          return {
+            id: r.id,
+            user_id: r.addressee_id,
+            name: p.display_name || p.handle || p.email || "Athlete",
+            handle: p.handle ? ("@" + String(p.handle).replace(/^@/, "")) : ""
+          };
+        });
+
+        SOC.messages = {};
+        var nameById = {};
+        SOC.friends.forEach(function(fr){ nameById[fr.id] = fr.name; });
+        (msgRes.data || []).slice().reverse().forEach(function(m){
+          var fid = m.sender_id === uid ? m.recipient_id : m.sender_id;
+          if (!fid) return;
+          SOC.messages[fid] = SOC.messages[fid] || [];
+          SOC.messages[fid].push({
+            from: m.sender_id === uid ? (SOC.profileName || "You") : (nameById[fid] || "Athlete"),
+            text: m.body || "",
+            at: new Date(m.created_at || Date.now()).getTime()
+          });
+        });
+
+        var feedIds = [uid].concat(friendIds);
+        if (!feedIds.length) { SOC.feed = []; return; }
+        return sb.from("social_posts").select("id,user_id,type,body,post_date,created_at").in("user_id", feedIds).order("created_at", { ascending: false }).limit(80).then(function(feedRes){
+          if (feedRes && feedRes.error) throw feedRes.error;
+          return fetchProfilesByIds(feedIds).then(function(feedProfiles){
+            SOC.feed = (feedRes.data || []).map(function(it){
+              var p = feedProfiles[it.user_id] || {};
+              return {
+                id: "p_" + it.id,
+                from: p.display_name || p.handle || p.email || "Athlete",
+                type: it.type || "update",
+                date: it.post_date || String(it.created_at || "").slice(0, 10),
+                text: it.body || "",
+                at: new Date(it.created_at || Date.now()).getTime()
+              };
+            });
+          });
+        });
+      });
+    }).then(function(){
+      sv("il_social", SOC);
+    }).catch(function(err){
+      authMsg = "Social load failed: " + ((err && err.message) ? err.message : "Set up social tables in Supabase.");
+    });
+  }
+   
    function syncProgressPRFilter() {
     var prNames = Object.keys(PR || {}).sort(function(a,b){ return (PR[b].e1rm||0)-(PR[a].e1rm||0); });
     if (!Array.isArray(PROG_PR_FILTER)) {
@@ -2357,35 +2514,31 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
       var lift = SOC.leaderboardLift || "Bench Press";
       var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
       var board = leaderboardRows(lift);
-    h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
-      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Build your profile, manage friends, chat, and share workouts, meals, and PR updates.</div>';
+        h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
+      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Build your profile, add real users by @handle, chat, and share workouts, meals, and PR updates.</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
       h += '<div class="meas-item"><div class="meas-val">'+socialMe.workouts+'</div><div class="meas-lbl">My workouts</div></div>';
       h += '<div class="meas-item"><div class="meas-val">'+socialMe.volume.toLocaleString()+'</div><div class="meas-lbl">Total volume</div></div>';
       h += '</div>';
-h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+         h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
       h += '<input class="inp" id="social-name" placeholder="Display name" value="'+esc(SOC.profileName || "You")+'">';
       h += '<input class="inp" id="social-handle" placeholder="@handle" value="'+esc(SOC.handle || "")+'">';
       h += '</div>';
- h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="margin-top:6px">'+esc(SOC.bio || "")+'</textarea>';
+h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="margin-top:6px">'+esc(SOC.bio || "")+'</textarea>';
       h += '<button class="btn bs" id="save-social-name" style="margin-top:8px;padding:8px 10px">Save profile</button>';
       h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
-       h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend</div>';
+      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Add friend (real user via @handle)</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
-      h += '<input class="inp" id="friend-name" placeholder="Friend name">';
-     h += '<input class="inp" id="friend-handle" placeholder="@handle">';
-       h += '<input class="inp" id="friend-workouts" type="number" min="0" placeholder="Workouts completed">';
-      h += '<input class="inp" id="friend-bench" type="number" min="0" placeholder="Bench e1RM">';
-      h += '<input class="inp" id="friend-squat" type="number" min="0" placeholder="Squat e1RM">';
-      h += '<input class="inp" id="friend-deadlift" type="number" min="0" placeholder="Deadlift e1RM">';
+       h += '<input class="inp" id="friend-name" placeholder="Friend handle shortcut (or type @handle)">';
+      h += '<input class="inp" id="friend-handle" placeholder="@handle (real user)">';
       h += '<button class="btn bp" id="add-friend-btn">➕ Add Friend</button>';
       h += '</div>';
-       h += '<div style="height:10px"></div>';
+      h += '<div style="height:10px"></div>';
       h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Pending requests</div>';
       h += '<div class="row" style="gap:6px;margin-bottom:8px">';
-      h += '<input class="inp" id="request-name" placeholder="Send request to name" style="flex:1">';
+      h += '<input class="inp" id="request-name" placeholder="Send request to @handle" style="flex:1">';
       h += '<button class="btn bs" id="send-request-btn" style="padding:8px 10px">Send</button>';
       h += '</div>';
       if ((SOC.requests || []).length) {
@@ -2398,6 +2551,42 @@ h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
           h += '</div></div>';
         });
       } else {
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No pending requests.</div>';
+      }
+      h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Sent requests</div>';
+      if ((SOC.sentRequests || []).length) {
+        (SOC.sentRequests || []).forEach(function(rq){
+          h += '<div class="rec-item" style="margin-bottom:6px">';
+          h += '<div><strong>'+esc(rq.name)+'</strong> <span style="font-size:10px;color:var(--mt)">'+esc(rq.handle || '')+'</span></div>';
+          h += '<div style="font-size:10px;color:var(--mt)">pending</div>';
+          h += '</div>';
+        });
+      } else {
+        h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No outgoing requests.</div>';
+      }
+      if ((SOC.requests || []).length) {
+          h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Your friends</div>';
+        (SOC.requests || []).forEach(function(rq, idx){
+          h += '<div class="rec-item" style="margin-bottom:6px">';
+h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})['Bench Press'])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';          h += '<div class="row" style="gap:4px">';
+          h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
+          h += '</div>';
+        });
+      }
+      h += '</div>';
+
+         h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">💬 Messages</div>';
+      h += '<div class="row" style="gap:6px;align-items:center;margin-bottom:6px">';
+      h += '<select class="inp" id="msg-friend" style="flex:1"><option value="">Select friend</option>';
+      (SOC.friends || []).forEach(function(fr){
+        h += '<option value="'+esc(fr.id)+'">'+esc(fr.name)+'</option>';
+      });
+      h += '</select>';
+      h += '<button class="btn bs" id="send-msg-btn" style="padding:8px 10px">Send</button></div>';
+      h += '<textarea class="txta" id="msg-body" placeholder="Send a message, plan a lift, or check in on meals/workouts."></textarea>';
+      h += '<div id="msg-thread" style="margin-top:8px">';
+      h += '<div style="font-size:10px;color:var(--mt)">Pick a friend to view recent messages.</div>';
+      h += '</div></div>';
         h += '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">No pending requests.</div>';
       }
        if ((SOC.friends || []).length) {
