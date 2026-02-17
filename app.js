@@ -626,7 +626,7 @@ var messages = (s.messages && typeof s.messages === "object") ? s.messages : {};
       requests: requests.map(function(rq){
         return {
           id: rq && rq.id ? String(rq.id) : socialId(),
-                   user_id: rq && rq.user_id ? String(rq.user_id) : "",
+          user_id: rq && rq.user_id ? String(rq.user_id) : "",
            name: String((rq && rq.name) || "Athlete"),
           handle: String((rq && rq.handle) || "")
         };
@@ -809,7 +809,7 @@ function normalizeWeightUnit(unit) {
   }
 
    function profileSelectColumns() {
- return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bio";
+return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bio";
    }
 
   function safeProfileHandle(p) {
@@ -920,8 +920,8 @@ function normalizeWeightUnit(unit) {
           return {
             id: r.id,
             user_id: r.addressee_id,
-                      name: p.display_name || p.handle || "Athlete",
-            handle: safeProfileHandle(p)
+            name: p.display_name || p.handle || "Athlete",
+             handle: safeProfileHandle(p)
           };
         });
 
@@ -3292,8 +3292,8 @@ var saveSocialName = document.getElementById("save-social-name");
       if (!clean) return Promise.resolve(false);
       var lookup = function() {
         if (socialSupportsHandle) {
-return sb.from("profiles").select("id,display_name,handle").eq("handle", clean).maybeSingle().then(function(res){
-   if (res && res.error) throw res.error;
+          return sb.from("profiles").select("id,display_name,handle").eq("handle", clean).maybeSingle().then(function(res){
+             if (res && res.error) throw res.error;
             return res.data;
           }).catch(function(err){
             if (isMissingHandleColumnError(err)) {
@@ -3401,38 +3401,33 @@ var rqId = parseInt(rq.id, 10);
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
         var rq = (SOC.requests || [])[i];
-        if (socialReady() && rq && rq.id) {
-          var uid = myUserId();
-var rqId = parseInt(rq.id, 10);
-          var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq("addressee_id", uid);
+if (!rq) return;
+
+        var rqId = parseInt(rq.id, 10);
+        var isLegacyLocalRequest = isNaN(rqId) && !rq.user_id;
+        if (isLegacyLocalRequest) {
+          SOC.requests.splice(i, 1);
+          saveAll();
+          render();
+          alert("Removed old offline friend request.");
+          return;
+        }
+
+        if (socialReady() && rq.id) {
+         var uid = myUserId();
+var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq("addressee_id", uid);
           if (!isNaN(rqId)) {
             declineQuery = declineQuery.eq("id", rqId);
           } else if (rq.user_id) {
             declineQuery = declineQuery.eq("requester_id", rq.user_id).eq("status", "pending");
           } else {
-            alert("Invalid request id.");
+            SOC.requests.splice(i, 1);
+            saveAll();
+            render();
+            alert("Removed old offline friend request.");
             return;
           }
           declineQuery.then(function(res){
-           if (res && res.error) throw res.error;
-            return loadSocialGraph();
-          }).then(function(){ render(); }).catch(function(err){
-            alert((err && err.message) ? err.message : "Could not decline request.");
-          });
-          return;
-        }
-        alert("Sign in to decline real friend requests.");
-      };
-    });
-
-    document.querySelectorAll(".social-rm").forEach(function(btn){
-      btn.onclick = function(){
-        var i = parseInt(this.getAttribute("data-i"), 10);
-        if (isNaN(i)) return;
-        var fr = SOC.friends[i];
-        if (socialReady() && fr && fr.id && isLikelyUuid(fr.id)) {
-           var uid = myUserId();
-          sb.from("friendships").delete().eq("user_id", uid).eq("friend_id", fr.id).then(function(res){
             if (res && res.error) throw res.error;
             return sb.from("friendships").delete().eq("user_id", fr.id).eq("friend_id", uid);
           }).then(function(res2){
