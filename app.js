@@ -799,21 +799,51 @@ function normalizeWeightUnit(unit) {
     return !!(sb && myUserId());
   }
 
+   var socialSupportsHandle = true;
+  function isMissingHandleColumnError(err) {
+    var msg = String((err && err.message) || "").toLowerCase();
+    var details = String((err && err.details) || "").toLowerCase();
+    var code = String((err && err.code) || "").toLowerCase();
+    return msg.indexOf("profiles.handle") >= 0 || details.indexOf("profiles.handle") >= 0 || code === "42703" || code === "pgrst204";
+  }
+
+  function profileSelectColumns() {
+    return socialSupportsHandle ? "id,display_name,handle,bio,email" : "id,display_name,bio,email";
+  }
+
+  function safeProfileHandle(p) {
+    return (p && p.handle) ? ("@" + String(p.handle).replace(/^@/, "")) : "";
+  }
+
+  function isLikelyUuid(v) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || ""));
+  }
+   
   function ensureSocialProfile() {
     if (!socialReady()) return Promise.resolve();
     var uid = myUserId();
     var display = (SOC.profileName || (authSession.user.email || "Athlete")).trim();
     var handle = normalizeHandle(SOC.handle || (authSession.user.email || "").split("@")[0]);
     var bio = String(SOC.bio || "").trim();
-    return sb.from("profiles").upsert({
-      id: uid,
+    var payload = {
+     id: uid,
       email: authSession.user.email || null,
       display_name: display,
-      handle: handle || null,
       bio: bio || null,
       updated_at: new Date().toISOString()
-    }, { onConflict: "id" }).then(function(res){ if (res && res.error) throw res.error; })
+};
+    if (socialSupportsHandle) payload.handle = handle || null;
+
+    return sb.from("profiles").upsert(payload, { onConflict: "id" }).then(function(res){ if (res && res.error) throw res.error; })
       .catch(function(err){
+        if (socialSupportsHandle && isMissingHandleColumnError(err)) {
+          socialSupportsHandle = false;
+          delete payload.handle;
+          return sb.from("profiles").upsert(payload, { onConflict: "id" }).then(function(retry){ if (retry && retry.error) throw retry.error; });
+        }
+        throw err;
+      })
+         .catch(function(err){
         authMsg = "Social profile sync failed: " + ((err && err.message) ? err.message : "Unknown error");
       });
   }
@@ -821,12 +851,18 @@ function normalizeWeightUnit(unit) {
   function fetchProfilesByIds(ids) {
     ids = (ids || []).filter(Boolean);
     if (!ids.length || !sb) return Promise.resolve({});
-    return sb.from("profiles").select("id,display_name,handle,bio,email").in("id", ids).then(function(res){
-      if (res && res.error) throw res.error;
+    return sb.from("profiles").select(profileSelectColumns()).in("id", ids).then(function(res){
+     if (res && res.error) throw res.error;
       var map = {};
       (res.data || []).forEach(function(p){ map[p.id] = p; });
       return map;
-    });
+   }).catch(function(err){
+      if (socialSupportsHandle && isMissingHandleColumnError(err)) {
+        socialSupportsHandle = false;
+        return fetchProfilesByIds(ids);
+      }
+      throw err;
+    });  
   }
 
   function loadSocialGraph() {
@@ -834,8 +870,8 @@ function normalizeWeightUnit(unit) {
     var uid = myUserId();
     return ensureSocialProfile().then(function(){
       return Promise.all([
-        sb.from("profiles").select("id,display_name,handle,bio,email").eq("id", uid).maybeSingle(),
-        sb.from("friendships").select("friend_id").eq("user_id", uid),
+        sb.from("profiles").select(profileSelectColumns()).eq("id", uid).maybeSingle(),
+         sb.from("friendships").select("friend_id").eq("user_id", uid),
         sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("addressee_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
         sb.from("friend_requests").select("id,requester_id,addressee_id,status,created_at").eq("requester_id", uid).eq("status", "pending").order("created_at", { ascending: false }),
         sb.from("messages").select("id,sender_id,recipient_id,body,created_at").or("sender_id.eq." + uid + ",recipient_id.eq." + uid).order("created_at", { ascending: false }).limit(200)
@@ -850,8 +886,8 @@ function normalizeWeightUnit(unit) {
 
       var myProfile = meRes.data || {};
       if (myProfile.display_name) SOC.profileName = myProfile.display_name;
-      SOC.handle = myProfile.handle ? ("@" + String(myProfile.handle).replace(/^@/, "")) : (SOC.handle || "");
-      SOC.bio = myProfile.bio || SOC.bio || "";
+      SOC.handle = safeProfileHandle(myProfile) || (SOC.handle || "");
+       SOC.bio = myProfile.bio || SOC.bio || "";
 
       var friendIds = (frRes.data || []).map(function(r){ return r.friend_id; }).filter(Boolean);
       var reqRows = rqRes.data || [];
@@ -865,8 +901,8 @@ function normalizeWeightUnit(unit) {
           return {
             id: fid,
             name: p.display_name || p.handle || p.email || "Athlete",
-            handle: p.handle ? ("@" + String(p.handle).replace(/^@/, "")) : "",
-            workouts: 0,
+            handle: safeProfileHandle(p),
+             workouts: 0,
             lifts: {}
           };
         });
@@ -876,7 +912,7 @@ function normalizeWeightUnit(unit) {
             id: r.id,
             user_id: r.requester_id,
             name: p.display_name || p.handle || p.email || "Athlete",
-            handle: p.handle ? ("@" + String(p.handle).replace(/^@/, "")) : ""
+            handle: safeProfileHandle(p)
           };
         });
         SOC.sentRequests = sentReqRows.map(function(r){
@@ -885,7 +921,7 @@ function normalizeWeightUnit(unit) {
             id: r.id,
             user_id: r.addressee_id,
             name: p.display_name || p.handle || p.email || "Athlete",
-            handle: p.handle ? ("@" + String(p.handle).replace(/^@/, "")) : ""
+            handle: safeProfileHandle(p)
           };
         });
 
@@ -925,6 +961,10 @@ function normalizeWeightUnit(unit) {
     }).then(function(){
       sv("il_social", SOC);
     }).catch(function(err){
+       if (socialSupportsHandle && isMissingHandleColumnError(err)) {
+        socialSupportsHandle = false;
+        return loadSocialGraph();
+      }
       authMsg = "Social load failed: " + ((err && err.message) ? err.message : "Set up social tables in Supabase.");
     });
   }
@@ -3246,13 +3286,30 @@ var saveSocialName = document.getElementById("save-social-name");
      function sendRealFriendRequest(inputValue) {
       if (!socialReady()) return Promise.resolve(false);
       var uid = myUserId();
-      var q = String(inputValue || "").trim();
-      if (!q) return Promise.resolve(false);
+     var q = String(inputValue || "").trim();
+        if (!q) return Promise.resolve(false);
       var clean = normalizeHandle(q);
       if (!clean) return Promise.resolve(false);
-      return sb.from("profiles").select("id,display_name,handle,email").eq("handle", clean).maybeSingle().then(function(res){
-        if (res && res.error) throw res.error;
-        var target = res.data;
+      var lookup = function() {
+        if (socialSupportsHandle) {
+          return sb.from("profiles").select("id,display_name,handle,email").eq("handle", clean).maybeSingle().then(function(res){
+            if (res && res.error) throw res.error;
+            return res.data;
+          }).catch(function(err){
+            if (isMissingHandleColumnError(err)) {
+              socialSupportsHandle = false;
+              return lookup();
+            }
+            throw err;
+          });
+        }
+        return sb.from("profiles").select("id,display_name,email").eq("display_name", clean).maybeSingle().then(function(res){
+          if (res && res.error) throw res.error;
+          return res.data;
+        });
+      };
+
+      return lookup().then(function(target){
         if (!target) throw new Error("No user found for that handle.");
         if (target.id === uid) throw new Error("You cannot send a friend request to yourself.");
         return sb.from("friendships").select("user_id,friend_id").eq("user_id", uid).eq("friend_id", target.id).maybeSingle().then(function(frRes){
@@ -3356,8 +3413,8 @@ var saveSocialName = document.getElementById("save-social-name");
         var i = parseInt(this.getAttribute("data-i"), 10);
         if (isNaN(i)) return;
         var fr = SOC.friends[i];
-        if (socialReady() && fr && fr.id) {
-          var uid = myUserId();
+        if (socialReady() && fr && fr.id && isLikelyUuid(fr.id)) {
+           var uid = myUserId();
           sb.from("friendships").delete().eq("user_id", uid).eq("friend_id", fr.id).then(function(res){
             if (res && res.error) throw res.error;
             return sb.from("friendships").delete().eq("user_id", fr.id).eq("friend_id", uid);
