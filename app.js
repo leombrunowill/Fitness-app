@@ -626,7 +626,8 @@ var messages = (s.messages && typeof s.messages === "object") ? s.messages : {};
       requests: requests.map(function(rq){
         return {
           id: rq && rq.id ? String(rq.id) : socialId(),
-          name: String((rq && rq.name) || "Athlete"),
+                   user_id: rq && rq.user_id ? String(rq.user_id) : "",
+           name: String((rq && rq.name) || "Athlete"),
           handle: String((rq && rq.handle) || "")
         };
       }),
@@ -807,9 +808,9 @@ function normalizeWeightUnit(unit) {
     return msg.indexOf("profiles.handle") >= 0 || details.indexOf("profiles.handle") >= 0 || code === "42703" || code === "pgrst204";
   }
 
-  function profileSelectColumns() {
-    return socialSupportsHandle ? "id,display_name,handle,bio,email" : "id,display_name,bio,email";
-  }
+   function profileSelectColumns() {
+ return socialSupportsHandle ? "id,display_name,handle,bio" : "id,display_name,bio";
+   }
 
   function safeProfileHandle(p) {
     return (p && p.handle) ? ("@" + String(p.handle).replace(/^@/, "")) : "";
@@ -827,7 +828,6 @@ function normalizeWeightUnit(unit) {
     var bio = String(SOC.bio || "").trim();
     var payload = {
      id: uid,
-      email: authSession.user.email || null,
       display_name: display,
       bio: bio || null,
       updated_at: new Date().toISOString()
@@ -900,8 +900,8 @@ function normalizeWeightUnit(unit) {
           var p = pmap[fid] || {};
           return {
             id: fid,
-            name: p.display_name || p.handle || p.email || "Athlete",
-            handle: safeProfileHandle(p),
+            name: p.display_name || p.handle || "Athlete",
+             handle: safeProfileHandle(p),
              workouts: 0,
             lifts: {}
           };
@@ -911,8 +911,8 @@ function normalizeWeightUnit(unit) {
           return {
             id: r.id,
             user_id: r.requester_id,
-            name: p.display_name || p.handle || p.email || "Athlete",
-            handle: safeProfileHandle(p)
+            name: p.display_name || p.handle || "Athlete",
+             handle: safeProfileHandle(p)
           };
         });
         SOC.sentRequests = sentReqRows.map(function(r){
@@ -920,7 +920,7 @@ function normalizeWeightUnit(unit) {
           return {
             id: r.id,
             user_id: r.addressee_id,
-            name: p.display_name || p.handle || p.email || "Athlete",
+                      name: p.display_name || p.handle || "Athlete",
             handle: safeProfileHandle(p)
           };
         });
@@ -948,8 +948,8 @@ function normalizeWeightUnit(unit) {
               var p = feedProfiles[it.user_id] || {};
               return {
                 id: "p_" + it.id,
-                from: p.display_name || p.handle || p.email || "Athlete",
-                type: it.type || "update",
+                from: p.display_name || p.handle || "Athlete",
+                 type: it.type || "update",
                 date: it.post_date || String(it.created_at || "").slice(0, 10),
                 text: it.body || "",
                 at: new Date(it.created_at || Date.now()).getTime()
@@ -3292,8 +3292,8 @@ var saveSocialName = document.getElementById("save-social-name");
       if (!clean) return Promise.resolve(false);
       var lookup = function() {
         if (socialSupportsHandle) {
-          return sb.from("profiles").select("id,display_name,handle,email").eq("handle", clean).maybeSingle().then(function(res){
-            if (res && res.error) throw res.error;
+return sb.from("profiles").select("id,display_name,handle").eq("handle", clean).maybeSingle().then(function(res){
+   if (res && res.error) throw res.error;
             return res.data;
           }).catch(function(err){
             if (isMissingHandleColumnError(err)) {
@@ -3303,8 +3303,8 @@ var saveSocialName = document.getElementById("save-social-name");
             throw err;
           });
         }
-        return sb.from("profiles").select("id,display_name,email").eq("display_name", clean).maybeSingle().then(function(res){
-          if (res && res.error) throw res.error;
+        return sb.from("profiles").select("id,display_name").eq("display_name", clean).maybeSingle().then(function(res){
+           if (res && res.error) throw res.error;
           return res.data;
         });
       };
@@ -3369,8 +3369,15 @@ var saveSocialName = document.getElementById("save-social-name");
         if (!rq) return;
         if (socialReady() && rq.user_id) {
           var uid = myUserId();
-          sb.from("friend_requests").update({ status: "accepted" }).eq("id", rq.id).eq("addressee_id", uid).then(function(res){
-            if (res && res.error) throw res.error;
+var rqId = parseInt(rq.id, 10);
+          var acceptQuery = sb.from("friend_requests").update({ status: "accepted" }).eq("addressee_id", uid);
+          if (!isNaN(rqId)) {
+            acceptQuery = acceptQuery.eq("id", rqId);
+          } else {
+            acceptQuery = acceptQuery.eq("requester_id", rq.user_id).eq("status", "pending");
+          }
+          acceptQuery.then(function(res){
+           if (res && res.error) throw res.error;
             return sb.from("friendships").upsert([
               { user_id: uid, friend_id: rq.user_id },
               { user_id: rq.user_id, friend_id: uid }
@@ -3396,8 +3403,18 @@ var saveSocialName = document.getElementById("save-social-name");
         var rq = (SOC.requests || [])[i];
         if (socialReady() && rq && rq.id) {
           var uid = myUserId();
-          sb.from("friend_requests").update({ status: "declined" }).eq("id", rq.id).eq("addressee_id", uid).then(function(res){
-            if (res && res.error) throw res.error;
+var rqId = parseInt(rq.id, 10);
+          var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq("addressee_id", uid);
+          if (!isNaN(rqId)) {
+            declineQuery = declineQuery.eq("id", rqId);
+          } else if (rq.user_id) {
+            declineQuery = declineQuery.eq("requester_id", rq.user_id).eq("status", "pending");
+          } else {
+            alert("Invalid request id.");
+            return;
+          }
+          declineQuery.then(function(res){
+           if (res && res.error) throw res.error;
             return loadSocialGraph();
           }).then(function(){ render(); }).catch(function(err){
             alert((err && err.message) ? err.message : "Could not decline request.");
