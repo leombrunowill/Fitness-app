@@ -314,6 +314,77 @@ function weeklyAdherence(){
 }
 
 // Barcode scanning (best-effort; Safari supports BarcodeDetector on newer versions)
+
+   function getLastExerciseSession(exerciseName, beforeDate){
+  var dates = Object.keys(W).sort().reverse();
+  for (var i=0;i<dates.length;i++) {
+    var d = dates[i];
+    if (beforeDate && d >= beforeDate) continue;
+    var day = W[d] || [];
+    for (var j=0;j<day.length;j++) {
+      if (day[j] && day[j].exercise === exerciseName) return { date: d, entry: day[j] };
+    }
+  }
+  return null;
+}
+function entryStrengthScore(entry){
+  var score = 0;
+  (entry && entry.sets || []).forEach(function(st){ score += (+st.r||0) * (+st.w||0); });
+  return score;
+}
+function progressToneForEntry(entry){
+  var last = getLastExerciseSession(entry.exercise, selDate);
+  if (!last || !last.entry) return 'yellow';
+  var cur = entryStrengthScore(entry);
+  var prev = entryStrengthScore(last.entry);
+  if (cur > prev * 1.02) return 'green';
+  if (cur < prev * 0.98) return 'red';
+  return 'yellow';
+}
+function buildDashboardAnalytics(){
+  var muscleMap = {Chest:'Chest',Back:'Back',Legs:'Legs',Shoulders:'Shoulders',Arms:'Arms',Core:'Core'};
+  var targets = { Chest: 16, Back: 16, Legs: 18, Shoulders: 12, Arms: 10, Core: 8 };
+  var muscleVolumes = { Chest:0, Back:0, Legs:0, Shoulders:0, Arms:0, Core:0 };
+  var exerciseProgress = [];
+  var prsThisWeek = 0;
+  var dates = lastNDates(7);
+  dates.forEach(function(d){
+    (W[d] || []).forEach(function(ex){
+      var m = muscleMap[ex.group];
+      if (m) muscleVolumes[m] += (ex.sets || []).length;
+      var last = getLastExerciseSession(ex.exercise, d);
+      var cur = entryStrengthScore(ex);
+      var prev = last ? entryStrengthScore(last.entry) : 0;
+      if (cur > prev && prev > 0) prsThisWeek += 1;
+      exerciseProgress.push({ exercise: ex.exercise, prReady: prev > 0 && cur >= prev * 0.97, tone: progressToneForEntry(ex) });
+    });
+  });
+  var cals = 0;
+  dates.forEach(function(d){ (NLOG[d]||[]).forEach(function(it){ cals += (+it.cal||0); }); });
+  var workoutDates = Object.keys(W).filter(function(d){ return (W[d]||[]).length; });
+  var bodyweightLogs = Object.keys(BW).sort().map(function(d){ return { date:d, weight:+BW[d]||0 }; });
+  var adh = weeklyAdherence();
+  return {
+    muscleVolumes: muscleVolumes,
+    targets: targets,
+    exerciseProgress: exerciseProgress,
+    bodyweightLogs: bodyweightLogs,
+    goalWeight: USER.bodyweightGoal || 170,
+    workoutDates: workoutDates,
+    prsThisWeek: prsThisWeek,
+    adherencePct: adh.score * 100,
+    weekly: {
+      workoutsDone: adh.workouts,
+      workoutsPlanned: adh.plan,
+      setsDone: adh.sets,
+      setsTarget: 90,
+      calories: Math.round(cals / 7),
+      calTarget: +(USER.targetCalories || 2400)
+    },
+    needsProfile: !USER.trainingGoal
+  };
+}
+
 function canScanBarcode(){
   return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
@@ -2266,6 +2337,7 @@ var h = "";
     h += '</div>';
 
     if (view === "log") {
+             h += "<div id=\"dashboard-v2\"></div>";
       var bw = BW[selDate];
              var bwDisp = bw ? toDisplayWeight(bw) : 0;
       h += '<div class="card">';
@@ -2289,8 +2361,8 @@ var h = "";
         h += '<div class="empty"><div style="font-size:40px;margin-bottom:8px">🏋️</div>No exercises logged yet.</div>';
       } else {
         day.forEach(function(ex, idx){
-          h += '<div class="card" style="margin-bottom:8px">';
-          h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
+h += '<div class="card exercise-card" style="margin-bottom:8px" data-progress-tone="'+progressToneForEntry(ex)+'" data-strength-mode="'+((ex.setStyle==='standard'&&entryStrengthScore(ex)>600)?'strength':'hypertrophy')+'">';
+           h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
           h += '<div><div style="font-size:12px;color:var(--mt);font-weight:700">'+esc(ex.group)+'</div>';
           h += '<div style="font-size:15px;font-weight:900">'+esc(ex.exercise)+'</div>';
                     if (ex.equipment) h += '<div style="font-size:10px;color:var(--mt);font-weight:700;margin-top:2px">🛠 '+esc(ex.equipment)+'</div>';
@@ -2315,8 +2387,8 @@ return (s.r||0)+'×'+((+s.w||0)>0? (toDisplayWeight(s.w)+' '+weightUnitLabel()):
               h += '<input class="inp" data-act="set-time" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.5" value="'+(+st.t||0)+'" style="padding:6px 8px">';
               h += '<input class="inp" data-act="set-distance" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.05" value="'+(+st.d||0)+'" style="padding:6px 8px">';
             } else {
-              h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px">';
-h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="BW">';
+                 h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px" placeholder="'+((getLastExerciseSession(ex.exercise, selDate) && getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx]) ? (getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx].r || '') : '')+'">';
+h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="'+((getLastExerciseSession(ex.exercise, selDate) && getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx] && (+getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx].w||0)>0)?toDisplayWeight(getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx].w):'BW')+'">';          
             }
           });
           h += '</div>';
@@ -2358,7 +2430,6 @@ h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises �
         h += '<div style="font-size:10px;color:var(--mt);text-align:center;margin-top:10px">Showing last 60 workout days.</div>';
       }
     }
-
     if (view === "progress") {
       h += '<div class="sect">📈 Progress</div>';
       var bwD = Object.keys(BW).sort();
@@ -2765,6 +2836,31 @@ h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save 
 
     app.innerHTML = h;
     bindEvents();
+
+   if (window.IronLogDashboard) {
+      window.IronLogDashboard.initDashboard({
+        view: view,
+        analytics: buildDashboardAnalytics(),
+        onQuickStart: function(){
+          var weekday = new Date(selDate+'T00:00:00').getDay();
+          var rid = RSCHED[String(weekday)] || RSCHED[['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][weekday]];
+          if (rid) {
+            applyRoutineById(rid);
+          } else if (confirm('No routine planned. Start an empty workout?')) {
+            openAddExerciseModal();
+          }
+        },
+        onProfileSaved: function(fd){
+          USER.trainingGoal = fd.get('goal');
+          USER.experienceLevel = fd.get('experience');
+          USER.sessionsPerWeek = parseInt(fd.get('days'), 10) || USER.sessionsPerWeek;
+          USER.bodyweightGoal = parseFloat(fd.get('goal_weight')) || USER.bodyweightGoal;
+          saveAll();
+          render();
+        }
+      });
+      window.IronLogDashboard.initExerciseIntelligence();
+    }
 
     if (view === "progress") {
       var bwD2 = Object.keys(BW).sort();
