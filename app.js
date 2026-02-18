@@ -315,7 +315,7 @@ function weeklyAdherence(){
 
 // Barcode scanning (best-effort; Safari supports BarcodeDetector on newer versions)
 
-   function getLastExerciseSession(exerciseName, beforeDate){
+function getLastExerciseSession(exerciseName, beforeDate){
   var dates = Object.keys(W).sort().reverse();
   for (var i=0;i<dates.length;i++) {
     var d = dates[i];
@@ -356,7 +356,7 @@ function buildDashboardAnalytics(){
       var cur = entryStrengthScore(ex);
       var prev = last ? entryStrengthScore(last.entry) : 0;
       if (cur > prev && prev > 0) prsThisWeek += 1;
-      exerciseProgress.push({ exercise: ex.exercise, prReady: prev > 0 && cur >= prev * 0.97, tone: progressToneForEntry(ex) });
+      exerciseProgress.push({ exercise: ex.exercise, prReady: prev > 0 && cur >= prev * 0.97 });
     });
   });
   var cals = 0;
@@ -384,7 +384,7 @@ function buildDashboardAnalytics(){
     needsProfile: !USER.trainingGoal
   };
 }
-
+   
 function canScanBarcode(){
   return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
@@ -2337,8 +2337,8 @@ var h = "";
     h += '</div>';
 
     if (view === "log") {
-             h += "<div id=\"dashboard-v2\"></div>";
-      var bw = BW[selDate];
+      h += "<div id=\"dashboard-v2\"></div>";
+       var bw = BW[selDate];
              var bwDisp = bw ? toDisplayWeight(bw) : 0;
       h += '<div class="card">';
       h += '<div class="row" style="justify-content:space-between;align-items:center">';
@@ -2361,7 +2361,9 @@ var h = "";
         h += '<div class="empty"><div style="font-size:40px;margin-bottom:8px">🏋️</div>No exercises logged yet.</div>';
       } else {
         day.forEach(function(ex, idx){
-h += '<div class="card exercise-card" style="margin-bottom:8px" data-progress-tone="'+progressToneForEntry(ex)+'" data-strength-mode="'+((ex.setStyle==='standard'&&entryStrengthScore(ex)>600)?'strength':'hypertrophy')+'">';
+ var lastSession = getLastExerciseSession(ex.exercise, selDate);
+          var lastSets = (lastSession && lastSession.entry && Array.isArray(lastSession.entry.sets)) ? lastSession.entry.sets : [];
+          h += '<div class="card exercise-card" style="margin-bottom:8px" data-progress-tone="'+progressToneForEntry(ex)+'" data-strength-mode="'+((ex.setStyle==='standard'&&entryStrengthScore(ex)>600)?'strength':'hypertrophy')+'">';
            h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
           h += '<div><div style="font-size:12px;color:var(--mt);font-weight:700">'+esc(ex.group)+'</div>';
           h += '<div style="font-size:15px;font-weight:900">'+esc(ex.exercise)+'</div>';
@@ -2387,10 +2389,13 @@ return (s.r||0)+'×'+((+s.w||0)>0? (toDisplayWeight(s.w)+' '+weightUnitLabel()):
               h += '<input class="inp" data-act="set-time" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.5" value="'+(+st.t||0)+'" style="padding:6px 8px">';
               h += '<input class="inp" data-act="set-distance" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="0.05" value="'+(+st.d||0)+'" style="padding:6px 8px">';
             } else {
-                 h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px" placeholder="'+((getLastExerciseSession(ex.exercise, selDate) && getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx]) ? (getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx].r || '') : '')+'">';
-h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="'+((getLastExerciseSession(ex.exercise, selDate) && getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx] && (+getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx].w||0)>0)?toDisplayWeight(getLastExerciseSession(ex.exercise, selDate).entry.sets[sIdx].w):'BW')+'">';          
-            }
-          });
+var lastSet = lastSets[sIdx] || null;
+              var lastRepsGhost = lastSet ? (lastSet.r || '') : '';
+              var lastWeightGhost = (lastSet && (+lastSet.w || 0) > 0) ? toDisplayWeight(lastSet.w) : 'BW';
+              h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px" placeholder="'+lastRepsGhost+'">';
+h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="'+lastWeightGhost+'">';               
+    }
+});
           h += '</div>';
           if (ex.note) h += '<div style="margin-top:8px;font-size:11px;color:var(--mt);font-style:italic">📝 '+esc(ex.note)+'</div>';
           h += '</div>';
@@ -2401,7 +2406,7 @@ h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'
       h += '<button class="btn bp" data-act="add-ex" style="padding:10px 14px;font-size:12px">➕ Add Workout</button>';
       h += '</div>';
     }
-
+              
     if (view === "history") {
       h += '<div class="sect">📋 History</div>';
       var dates = Object.keys(W).sort().reverse().filter(function(d){ return (W[d]||[]).length; });
