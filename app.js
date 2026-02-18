@@ -385,6 +385,184 @@ function buildDashboardAnalytics(){
   };
 }
    
+   function getRecentWeightTrendInfo() {
+  var dates = Object.keys(BW).sort();
+  if (!dates.length) return { today: null, avg7: null, deltaWeek: null };
+  var todayWeight = +BW[dates[dates.length - 1]] || null;
+  var recent = dates.slice(-7).map(function(d){ return +BW[d] || 0; }).filter(function(v){ return v > 0; });
+  var avg7 = recent.length ? Math.round((recent.reduce(function(sum, v){ return sum + v; }, 0) / recent.length) * 10) / 10 : null;
+  var latestDate = dates[dates.length - 1];
+  var weekAgo = addDays(latestDate, -7);
+  var weekAgoWeight = BW[weekAgo] ? (+BW[weekAgo] || 0) : null;
+  var deltaWeek = (todayWeight && weekAgoWeight) ? Math.round((todayWeight - weekAgoWeight) * 10) / 10 : null;
+  return { today: todayWeight, avg7: avg7, deltaWeek: deltaWeek };
+}
+
+
+function getWeekWindowStart() {
+  var base = new Date(selDate + "T00:00:00");
+  var day = base.getDay();
+  var mondayDelta = day === 0 ? -6 : (1 - day);
+  base.setDate(base.getDate() + mondayDelta);
+  return base.toISOString().slice(0, 10);
+}
+
+function getPlannedCompletedForWeek() {
+  var start = getWeekWindowStart();
+  var planned = 0;
+  var completed = 0;
+  for (var i = 0; i < 7; i++) {
+    var curDate = addDays(start, i);
+    var curDow = new Date(curDate + "T00:00:00").getDay();
+    if (RSCHED[String(curDow)]) planned += 1;
+    if ((W[curDate] || []).length) completed += 1;
+  }
+  return { planned: planned, completed: completed, weekStart: start };
+}
+
+function getRoutineById(rid) {
+  for (var i = 0; i < (RLIB || []).length; i++) {
+    if (RLIB[i].id === rid) return RLIB[i];
+  }
+  return null;
+}
+
+function getAssignedRoutineForDate(ds) {
+  var dow = new Date(ds + "T00:00:00").getDay();
+  var rid = RSCHED[String(dow)] || "";
+  return rid ? getRoutineById(rid) : null;
+}
+
+function getLastWorkoutSummary() {
+  var dates = Object.keys(W).filter(function(d){ return (W[d] || []).length; }).sort().reverse();
+  if (!dates.length) return null;
+  var d = dates[0];
+  var entries = W[d] || [];
+  var routine = getAssignedRoutineForDate(d);
+  var name = routine ? routine.name : ((entries[0] && entries[0].group) ? (entries[0].group + " day") : "Workout");
+  return { date: d, name: name, sets: entries.reduce(function(sum, ex){ return sum + ((ex.sets || []).length || 0); }, 0) };
+}
+
+function getRecentGroupTrainingHours(refDate) {
+  var out = {};
+  var ref = new Date(refDate + "T00:00:00").getTime();
+  var dates = Object.keys(W).filter(function(d){ return (W[d] || []).length; }).sort().reverse();
+  for (var i = 0; i < dates.length; i++) {
+    var d = dates[i];
+    var ts = new Date(d + "T00:00:00").getTime();
+    if (ts > ref) continue;
+    var hours = Math.max(0, (ref - ts) / 36e5);
+    (W[d] || []).forEach(function(ex){
+      var g = ex && ex.group ? ex.group : "";
+      if (!g || g === "Cardio") return;
+      if (out[g] === undefined || hours < out[g]) out[g] = hours;
+    });
+  }
+  return out;
+}
+
+function plannedRoutineGroups(routine) {
+  var map = {};
+  if (!routine) return map;
+  (routine.focus || []).forEach(function(g){ if (g) map[g] = 1; });
+  (routine.items || []).forEach(function(it){ if (it && it.group && it.group !== "Cardio") map[it.group] = 1; });
+  return map;
+}
+
+function buildTodayFocusData() {
+  var analytics = buildDashboardAnalytics();
+  var targets = analytics.targets || {};
+  var volumes = analytics.muscleVolumes || {};
+  var routine = getAssignedRoutineForDate(selDate);
+  var planned = plannedRoutineGroups(routine);
+  var recentHours = getRecentGroupTrainingHours(selDate);
+  var items = [];
+
+  Object.keys(targets).forEach(function(group){
+    var target = +targets[group] || 0;
+    var current = +volumes[group] || 0;
+    var deficit = Math.max(0, target - current);
+    var score = 0;
+    if (planned[group]) score += 100;
+    if (deficit > 0) score += 50;
+    score += Math.min(40, deficit * 2);
+    var hrs = recentHours[group];
+    if (!planned[group] && hrs !== undefined) {
+      if (hrs <= 24) score -= 30;
+      else if (hrs <= 48) score -= 15;
+    }
+    items.push({
+      group: group,
+      target: target,
+      current: current,
+      deficit: deficit,
+      sets: deficit,
+      score: score,
+      planned: !!planned[group],
+      recentHours: hrs
+    });
+  });
+
+  items.sort(function(a, b){
+    if (b.score !== a.score) return b.score - a.score;
+    return b.deficit - a.deficit;
+  });
+
+  return { routine: routine, items: items };
+}
+
+function getVolumeSnapshot(limit) {
+  var analytics = buildDashboardAnalytics();
+  var targets = analytics.targets || {};
+  var volumes = analytics.muscleVolumes || {};
+  var rows = [];
+  Object.keys(targets).forEach(function(group){
+    var target = +targets[group] || 0;
+    var current = +volumes[group] || 0;
+    var deficit = Math.max(0, target - current);
+    rows.push({ group: group, target: target, current: current, deficit: deficit });
+  });
+  rows.sort(function(a, b){ return b.deficit - a.deficit; });
+  return rows.slice(0, limit || 3);
+}
+
+function getNextPlannedWorkoutSummary(fromDate) {
+  var dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  for (var i = 0; i < 14; i++) {
+    var d = addDays(fromDate, i);
+    var dow = new Date(d + "T00:00:00").getDay();
+    var rid = RSCHED[String(dow)] || "";
+    if (!rid) continue;
+    var r = getRoutineById(rid);
+    return { day: dayNames[dow], routine: r ? r.name : "Routine" };
+  }
+  return null;
+}
+
+function queueRender(delayMs) {
+  clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(render, delayMs || 70);
+}
+
+function showToast(msg) {
+  var wrap = document.getElementById("il-toast-wrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "il-toast-wrap";
+    wrap.className = "toast-wrap";
+    document.body.appendChild(wrap);
+  }
+  var t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  wrap.appendChild(t);
+  requestAnimationFrame(function(){ t.classList.add("show"); });
+  setTimeout(function(){
+    t.classList.remove("show");
+    setTimeout(function(){ if (t && t.parentNode) t.parentNode.removeChild(t); }, 220);
+  }, 2200);
+}
+   
 function canScanBarcode(){
   return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
@@ -641,6 +819,11 @@ var view = ld("il_view", "home");
   if (["home", "plan", "track", "progress", "social", "profile"].indexOf(view) < 0) view = "home";
   if (trackMode !== "workout" && trackMode !== "nutrition") trackMode = "workout";
    var selDate = ld("il_selDate", tod());
+   var homeWeightEntryOpen = false;
+  var lastHomeSuggestion = null;
+  var planAccordionOpen = {};
+  var planSelectedDow = new Date(selDate + "T00:00:00").getDay();
+  var renderDebounceTimer = null;
 
   var W = ld("il_w", {});         // workouts by date
   var CEX = ld("il_custom_ex", {}); // custom exercises by group
@@ -2347,33 +2530,94 @@ if (view === "home") {
       var homeDay = dayNutrition(selDate);
       var homeTotals = homeDay.totals;
       var homeGoals = calcAutoGoals();
-      var bw = BW[selDate];
-      var bwDisp = bw ? toDisplayWeight(bw) : 0;
+    var weightInfo = getRecentWeightTrendInfo();
+      var todayWeight = BW[selDate] ? (+BW[selDate] || 0) : weightInfo.today;
+      var focusData = buildTodayFocusData();
+      var todayFocusItems = (focusData.items || []).slice(0, 2);
+      var snapshotItems = getVolumeSnapshot(3);
+      var lastWorkout = getLastWorkoutSummary();
+      var homeCalRemaining = Math.max(0, (homeGoals.cal || 0) - (homeTotals.cal || 0));
+      var homeProteinRemaining = Math.max(0, (homeGoals.p || 0) - Math.round(homeTotals.p || 0));
       h += '<div id="dashboard-v2"></div>';
-      h += '<div class="card" style="margin-top:8px">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">';
-      h += '<div style="font-size:13px;font-weight:800">📌 Weekly Adherence</div>';
-      h += '<div style="font-size:14px;font-weight:900;color:var(--gn)">'+adhPct+'%</div>';
+      h += '<div class="card home-stack-card" style="margin-top:8px">';
+   h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">';
+      h += '<div class="home-card-title">📌 Weekly Adherence</div>';
+   h += '<div style="font-size:14px;font-weight:900;color:var(--gn)">'+adhPct+'%</div>';
       h += '</div>';
-      h += '<div style="font-size:11px;color:var(--mt)">Workouts: <strong style="color:var(--tx)">'+adh.workouts+'/'+adh.plan+'</strong> · '+volMsg+'</div>';
+ h += '<div class="home-meta">Workouts: <strong style="color:var(--tx)">'+adh.workouts+'/'+adh.plan+'</strong> · '+volMsg+'</div>';
+      if (lastWorkout) h += '<button class="last-workout-link" data-act="jump" data-date="'+lastWorkout.date+'">Last workout: '+esc(lastWorkout.name)+' • '+esc(fmtS(lastWorkout.date))+'</button>';
+      else h += '<div class="home-meta" style="margin-top:8px">Last workout: —</div>';
+   h += '</div>';
+
+      h += '<div class="card home-stack-card">';
+      h += '<div class="row" style="justify-content:space-between;align-items:center;gap:10px">';
+      h += '<div class="home-card-title">🎯 Today&#39;s Focus</div>';
+      h += '<button class="home-view-all" id="home-focus-viewall">View all</button>';
       h += '</div>';
-      h += '<div class="card">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center">';
-      h += '<div><div style="font-size:10px;color:var(--mt);text-transform:uppercase;font-weight:700">⚖️ Quick Body Weight</div>';
-      h += bw ? '<div style="font-size:22px;font-weight:900;color:var(--pk)">'+bwDisp+' '+weightUnitLabel()+'</div>' : '<div style="font-size:11px;color:var(--mt)">Not logged</div>';
+      if (focusData.routine) h += '<div class="focus-routine-pill">Today: '+esc(focusData.routine.name)+'</div>';
+      if (todayFocusItems.length) {
+        todayFocusItems.forEach(function(item, idx){
+          h += '<div class="focus-item'+(idx === 0 ? ' top' : '')+'">';
+          h += '<div><div style="font-size:12px;font-weight:800">'+esc(item.group)+'</div>';
+          h += '<div class="home-meta">'+item.current+'/'+item.target+' weekly sets</div><div class="home-meta">Add '+item.deficit+' sets this week</div></div>';
+          h += '<button class="btn bp home-focus-action" data-group="'+esc(item.group)+'" data-sets="'+item.sets+'" style="padding:6px 10px;font-size:10px">Add to today&#39;s workout</button>';
+          h += '</div>';
+        });
+      } else {
+        h += '<div class="empty-state"><div class="empty-icon">✅</div><div><div class="empty-title">Great coverage this week</div><div class="empty-meta">No urgent muscle-group gaps right now.</div></div></div>';
+      }
       h += '</div>';
-      h += '<div class="row" style="gap:6px"><input type="number" class="inp" id="bw-inp" style="width:90px" placeholder="'+weightUnitLabel()+'" value="'+(bw ? bwDisp : '')+'"><button class="btn bs" id="bw-btn" style="padding:8px 12px">'+(bw?"✓":"Log")+'</button></div>';
-      h += '</div></div>';
-      h += '<div class="card">';
-      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🍽️ Nutrition Summary</div>';
-      h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">';
-      h += '<div><div style="font-size:16px;font-weight:900">'+homeTotals.cal+' / '+homeGoals.cal+'</div><div style="font-size:10px;color:var(--mt)">Calories</div></div>';
-      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.p)+' / '+homeGoals.p+'g</div><div style="font-size:10px;color:var(--mt)">Protein</div></div>';
-      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.c)+' / '+homeGoals.c+'g</div><div style="font-size:10px;color:var(--mt)">Carbs</div></div>';
-      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.f)+' / '+homeGoals.f+'g</div><div style="font-size:10px;color:var(--mt)">Fat</div></div>';
-      h += '</div></div>';
-      h += '<div class="row" style="justify-content:center;margin-top:10px">';
-      h += '<button class="btn bp" id="home-start-workout" style="padding:10px 14px;font-size:12px">▶ Start Workout</button>';
+
+      h += '<div class="card home-stack-card">';
+      h += '<div class="home-card-title" style="margin-bottom:10px">📉 Recovery Snapshot</div>';
+      if (snapshotItems.length) {
+        snapshotItems.forEach(function(item){
+          var pct = Math.max(4, Math.min(100, Math.round((item.current / item.target) * 100)));
+          h += '<div class="snap-row">';
+          h += '<div style="font-size:11px;font-weight:700;width:62px">'+esc(item.group)+'</div>';
+          h += '<div class="snap-bar"><span class="snap-fill" style="width:'+pct+'%"></span></div>';
+          h += '<div class="home-meta" style="font-size:10px">'+item.current+'/'+item.target+'</div>';
+          h += '</div>';
+        });
+      } else {
+        h += '<div class="empty-state"><div class="empty-icon">📊</div><div><div class="empty-title">Snapshot unavailable</div><div class="empty-meta">Add workouts to populate weekly volume.</div></div></div>';
+      }
+      h += '</div>';
+
+      h += '<div class="card home-stack-card">';
+      h += '<div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">';
+      h += '<div><div class="home-meta" style="text-transform:uppercase;font-weight:700;letter-spacing:.06em">Today&#39;s Weight</div>';
+      h += todayWeight ? '<div style="font-size:26px;font-weight:900;color:var(--pk);margin-top:4px">'+toDisplayWeight(todayWeight)+' '+weightUnitLabel()+'</div>' : '<div class="home-meta" style="margin-top:6px">No weigh-in yet</div>';
+      if (weightInfo.deltaWeek !== null) {
+        var trendSign = weightInfo.deltaWeek > 0 ? '+' : '';
+        h += '<div class="home-meta" style="margin-top:6px">'+trendSign+toDisplayWeight(weightInfo.deltaWeek)+' '+weightUnitLabel()+' this week</div>';
+      } else if (weightInfo.avg7 !== null) {
+        h += '<div class="home-meta" style="margin-top:6px">7-day avg: '+toDisplayWeight(weightInfo.avg7)+' '+weightUnitLabel()+'</div>';
+      }
+      h += '</div>';
+      h += '<button class="btn bs" id="home-weight-toggle" style="padding:8px 12px">'+(homeWeightEntryOpen ? 'Close' : 'Log weight')+'</button>';
+      h += '</div>';
+      if (homeWeightEntryOpen) {
+        h += '<div class="row" style="gap:8px;margin-top:10px">';
+        h += '<input type="number" class="inp" id="bw-inp" style="flex:1" placeholder="'+weightUnitLabel()+'" value="'+(BW[selDate] ? toDisplayWeight(BW[selDate]) : '')+'">';
+        h += '<button class="btn bp" id="bw-btn" style="padding:8px 14px">Save</button>';
+        h += '</div>';
+      }
+      h += '</div>';
+
+      h += '<div class="card home-stack-card">';
+      h += '<div class="home-card-title" style="margin-bottom:8px">🍽️ Nutrition Summary</div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">';
+      h += '<div><div style="font-size:16px;font-weight:900">'+homeTotals.cal+' / '+homeGoals.cal+'</div><div class="home-meta">Calories</div></div>';
+      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.p)+' / '+homeGoals.p+'g</div><div class="home-meta">Protein</div></div>';
+      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.c)+' / '+homeGoals.c+'g</div><div class="home-meta">Carbs</div></div>';
+      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.f)+' / '+homeGoals.f+'g</div><div class="home-meta">Fat</div></div>';
+      h += '</div>';
+      h += '<div class="home-guidance">Calories remaining: '+homeCalRemaining+' · Protein remaining: '+homeProteinRemaining+'g</div>';
+      h += '<div class="row" style="gap:8px;margin-top:10px">';
+      h += '<button class="btn bs" id="home-log-food" style="flex:1">Log Food</button>';
+      h += '<button class="btn bp" id="home-start-workout" style="flex:1">'+(((W[selDate]||[]).length ? 'Continue Workout' : 'Start Workout'))+'</button>';
+      h += '</div>';
       h += '</div>';
     }
 
@@ -2698,36 +2942,60 @@ h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, 
     }
 
     if (view === "plan") {
-       var weekDay = new Date(selDate + "T00:00:00").getDay();
       var dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-           h += '<div class="sect">📁 Plan</div>';
-       h += '<div class="card">';
+         var shortNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      var weekStart = getWeekWindowStart();
+      var weekSummary = getPlannedCompletedForWeek();
+      h += '<div class="sect">📁 Plan</div>';
+      h += '<div class="card">';
+      h += '<div class="home-card-title" style="margin-bottom:10px">🗓️ Weekly Schedule</div>';
+      h += '<div class="home-meta" style="margin-bottom:10px">Tap a day to assign a routine.</div>';
+      h += '<div class="plan-week-grid">';
+      for (var wd = 0; wd < 7; wd++) {
+        var dow = wd === 6 ? 0 : wd + 1;
+        var dayDate = addDays(weekStart, wd);
+        var rid = RSCHED[String(dow)] || '';
+        var rr = (RLIB || []).find(function(item){ return item.id === rid; });
+        var completed = (W[dayDate] || []).length > 0;
+        h += '<button class="plan-day'+(completed ? ' done' : '')+(planSelectedDow===dow ? ' selected' : '')+'" data-dow="'+dow+'">';
+        h += '<div class="plan-day-name">'+shortNames[wd]+'</div>';
+        h += '<div class="plan-day-routine">'+esc(rr ? rr.name : '—')+'</div>';
+        h += '</button>';
+      }
+      h += '</div>';
+      h += '<div class="home-meta" style="margin-top:10px">Planned: '+weekSummary.planned+' workouts • Completed: '+weekSummary.completed+'</div>';
+      var nextPlan = getNextPlannedWorkoutSummary(selDate);
+      h += '<div class="home-meta" style="margin-top:6px">Next up: '+(nextPlan ? (esc(nextPlan.day)+' — '+esc(nextPlan.routine)) : '— (tap a day to assign)')+'</div>';
+      h += '</div>';
+
+      h += '<div class="card">';
       h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
-      h += '<div style="font-size:13px;font-weight:900">Preset Workout Library</div>';
-      h += '<div class="row" style="gap:6px">';
+      h += '<div class="home-card-title">Preset Workout Library</div>';
+       h += '<div class="row" style="gap:6px">';
       h += '<button class="btn bs" id="new-routine-btn" style="padding:6px 10px;font-size:11px">➕ New</button>';
       h += '<button class="btn bs" id="save-routine-from-day" style="padding:6px 10px;font-size:11px">💾 Save today</button>';
       h += '</div>';
       h += '</div>';
-      h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">One tap to load proven splits inspired by top apps like Strong, Fitbod, and Nike Training Club.</div>';
-      var schedId = RSCHED[String(weekDay)] || "";
-      var schedRoutine = (RLIB || []).find(function(r){ return r.id === schedId; });
-      if (schedRoutine) h += '<div style="font-size:11px;color:var(--bl);font-weight:700;margin-bottom:8px">📅 Scheduled for '+esc(dayNames[weekDay])+': '+esc(schedRoutine.name)+'</div>';
-      (RLIB || []).forEach(function(r){
-        h += '<div class="card" style="margin-bottom:8px;padding:10px">';
-        h += '<div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">';
+
+       (RLIB || []).forEach(function(r, idx){
+        var open = !!planAccordionOpen[r.id];
+        h += '<div class="routine-acc'+(open ? ' open' : '')+'">';
+        h += '<button class="routine-acc-head" data-id="'+esc(r.id)+'">';
         h += '<div><div style="font-size:13px;font-weight:800">'+esc(r.name)+'</div>';
-        h += '<div style="font-size:10px;color:var(--mt)">'+esc((r.focus||[]).join(' · ') || 'Full body')+' · '+r.items.length+' exercises</div></div>';
-        h += '<div class="row" style="gap:6px"><button class="btn bs routine-edit" data-id="'+esc(r.id)+'" style="padding:4px 8px;font-size:10px">Edit</button><button class="del routine-del" data-id="'+esc(r.id)+'">×</button></div>';
-        h += '</div>';
-        h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">';
+         h += '<div class="home-meta">'+esc((r.focus||[]).join(' · ') || 'Full body')+' · '+r.items.length+' exercises</div></div>';
+        h += '<div style="font-size:12px">'+(open ? '▾' : '▸')+'</div>';
+        h += '</button>';
+        h += '<div class="routine-acc-body">';
+        h += '<div class="row" style="gap:6px;flex-wrap:wrap">';
         h += '<button class="btn bp routine-apply" data-id="'+esc(r.id)+'" style="padding:6px 10px;font-size:11px">Use Today</button>';
-        h += '<button class="btn bs routine-plan" data-id="'+esc(r.id)+'" style="padding:6px 10px;font-size:11px">Assign to '+esc(dayNames[weekDay])+'</button>';
+ h += '<button class="btn bs routine-plan-picker" data-id="'+esc(r.id)+'" style="padding:6px 10px;font-size:11px">Assign to Day</button>';
+        h += '<button class="btn bs routine-edit" data-id="'+esc(r.id)+'" style="padding:6px 10px;font-size:11px">Edit</button>';
+        h += '<button class="del routine-del" data-id="'+esc(r.id)+'">×</button>';
         h += '</div>';
+          h += '</div>';
         h += '</div>';
       });
       h += '</div>';
-
     }
 
   if (view === "social" || view === "profile") {
@@ -2899,8 +3167,16 @@ h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save 
     }
 
     app.innerHTML = h;
+     app.classList.remove("view-transition-out");
+    app.classList.add("view-transition-in");
+    setTimeout(function(){ app.classList.remove("view-transition-in"); }, 220);
     bindEvents();
 
+      if (view === "track" && trackMode === "workout" && lastHomeSuggestion) {
+      showToast('Suggestion: add '+lastHomeSuggestion.sets+' sets for '+lastHomeSuggestion.group+'.');
+      lastHomeSuggestion = null;
+    }
+     
    if (window.IronLogDashboard) {
       window.IronLogDashboard.initDashboard({
         view: view,
@@ -3159,9 +3435,9 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
   function bindEvents() {
     var prev = document.getElementById("d-prev");
     var next = document.getElementById("d-next");
-    if (prev) prev.onclick = function(){ selDate = addDays(selDate, -1); sv("il_selDate", selDate); render(); };
-    if (next) next.onclick = function(){ selDate = addDays(selDate, 1); sv("il_selDate", selDate); render(); };
-
+   if (prev) prev.onclick = function(){ selDate = addDays(selDate, -1); planSelectedDow = new Date(selDate + "T00:00:00").getDay(); sv("il_selDate", selDate); queueRender(60); };
+    if (next) next.onclick = function(){ selDate = addDays(selDate, 1); planSelectedDow = new Date(selDate + "T00:00:00").getDay(); sv("il_selDate", selDate); queueRender(60); };
+     
     var themeBtn = document.getElementById("thm-btn");
     if (themeBtn) themeBtn.onclick = function(){
       TH = (TH === "dark") ? "light" : "dark";
@@ -3171,11 +3447,15 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
 
     document.querySelectorAll(".nb").forEach(function(btn){
       btn.onclick = function(){
-        view = this.getAttribute("data-v") || "home";
-         sv("il_view", view);
+        var nextView = this.getAttribute("data-v") || "home";
+        if (nextView === view) return;
+        var appEl = document.getElementById("app");
+        if (appEl) appEl.classList.add("view-transition-out");
+        view = nextView;
+        sv("il_view", view);
         document.querySelectorAll(".nb").forEach(function(b){ b.classList.remove("on"); });
         this.classList.add("on");
-        render();
+        queueRender(90);
       };
     });
     document.querySelectorAll(".nb").forEach(function(btn){
@@ -3205,6 +3485,44 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
       render();
     };
 
+     var homeFocusViewAllBtn = document.getElementById("home-focus-viewall");
+    if (homeFocusViewAllBtn) homeFocusViewAllBtn.onclick = function(){
+      var all = buildTodayFocusData().items || [];
+      var rows = all.map(function(item){
+        return '<div class="focus-modal-row"><div><strong>'+esc(item.group)+'</strong><div class="home-meta">'+item.current+'/'+item.target+' weekly sets • add '+item.deficit+'</div></div><div class="home-meta">score '+item.score+'</div></div>';
+      }).join("");
+      showModal('<div style="padding:6px 2px"><div style="font-size:16px;font-weight:900;margin-bottom:10px">All focus items</div>' + (rows || '<div class="home-meta">No focus items right now.</div>') + '<button class="btn bs" id="focus-close" style="width:100%;margin-top:12px">Done</button></div>');
+      var closeBtn = document.getElementById("focus-close");
+      if (closeBtn) closeBtn.onclick = closeModal;
+    };
+
+    var homeLogFoodBtn = document.getElementById("home-log-food");
+    if (homeLogFoodBtn) homeLogFoodBtn.onclick = function(){
+      view = "track";
+      trackMode = "nutrition";
+      saveAll();
+      render();
+    };
+
+    var homeWeightToggleBtn = document.getElementById("home-weight-toggle");
+    if (homeWeightToggleBtn) homeWeightToggleBtn.onclick = function(){
+      homeWeightEntryOpen = !homeWeightEntryOpen;
+      render();
+    };
+
+    document.querySelectorAll('.home-focus-action').forEach(function(btn){
+      btn.onclick = function(){
+        var group = this.getAttribute("data-group") || "Chest";
+        var sets = parseInt(this.getAttribute("data-sets"), 10) || 3;
+        lastHomeSuggestion = { group: group, sets: sets };
+        view = "track";
+        trackMode = "workout";
+        saveAll();
+        render();
+        showToast('Suggestion: add '+sets+' sets for '+group+'.');
+      };
+    });
+     
      var openLoginScreenBtn = document.getElementById("open-login-screen");
     if (openLoginScreenBtn) openLoginScreenBtn.onclick = function(){
       openAuthDialog();
@@ -3431,14 +3749,64 @@ var newRoutineBtn = document.getElementById("new-routine-btn");
         if (id) applyRoutineToDate(id, selDate);
       };
     });
-    document.querySelectorAll(".routine-plan").forEach(function(btn){
+    document.querySelectorAll(".routine-acc-head").forEach(function(btn){
+       btn.onclick = function(){
+        var id = this.getAttribute("data-id");
+        if (!id) return;
+        planAccordionOpen[id] = !planAccordionOpen[id];
+        render();
+      };
+    });
+
+    document.querySelectorAll(".plan-day").forEach(function(btn){
+      btn.onclick = function(){
+        var dow = parseInt(this.getAttribute("data-dow"), 10);
+        if (isNaN(dow)) return;
+        planSelectedDow = dow;
+        document.querySelectorAll('.plan-day').forEach(function(el){
+          el.classList.toggle('selected', parseInt(el.getAttribute('data-dow'), 10) === dow);
+        });
+        var options = '<option value="">— None —</option>';
+        (RLIB || []).forEach(function(r){ options += '<option value="'+esc(r.id)+'">'+esc(r.name)+'</option>'; });
+        showModal('<div style="padding:4px 2px"><div style="font-size:15px;font-weight:900;margin-bottom:10px">Assign routine</div>'+
+          '<select class="inp" id="plan-day-select" style="width:100%;text-align:left">'+options+'</select>'+
+          '<div class="row" style="gap:8px;margin-top:12px"><button class="btn bs" id="plan-cancel" style="flex:1">Cancel</button><button class="btn bp" id="plan-save" style="flex:1">Save</button></div></div>');
+        var sel = document.getElementById('plan-day-select');
+        if (sel) sel.value = RSCHED[String(dow)] || '';
+        var cancelBtn = document.getElementById('plan-cancel');
+        if (cancelBtn) cancelBtn.onclick = function(){ closeModal(); render(); };
+        var saveBtn = document.getElementById('plan-save');
+        if (saveBtn) saveBtn.onclick = function(){
+          var picked = (document.getElementById('plan-day-select') || {}).value || '';
+          if (picked) RSCHED[String(dow)] = picked;
+          else delete RSCHED[String(dow)];
+          saveAll();
+          closeModal();
+          render();
+        };
+      };
+    });
+
+    document.querySelectorAll(".routine-plan-picker").forEach(function(btn){
       btn.onclick = function(){
         var id = this.getAttribute("data-id");
         if (!id) return;
-        var d = new Date(selDate + "T00:00:00").getDay();
-        RSCHED[String(d)] = id;
-        saveAll();
-        alert("Routine assigned for this weekday. Open any matching date and tap Use Today.");
+        showModal('<div style="padding:4px 2px"><div style="font-size:15px;font-weight:900;margin-bottom:10px">Assign to day</div>'+
+          '<div class="plan-assign-grid">'+
+          '<button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="1">Mon</button><button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="2">Tue</button><button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="3">Wed</button><button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="4">Thu</button><button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="5">Fri</button><button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="6">Sat</button><button class="btn bs plan-assign-day" data-id="'+esc(id)+'" data-day="0">Sun</button>'+
+          '</div><button class="btn bs" id="plan-close" style="width:100%;margin-top:10px">Done</button></div>');
+        var closeBtn = document.getElementById('plan-close');
+        if (closeBtn) closeBtn.onclick = closeModal;
+        document.querySelectorAll('.plan-assign-day').forEach(function(dayBtn){
+          dayBtn.onclick = function(){
+            var rid = this.getAttribute('data-id');
+            var day = this.getAttribute('data-day');
+            if (!rid || day === null) return;
+            RSCHED[String(day)] = rid;
+            saveAll();
+            this.classList.add('on');
+          };
+        });
       };
     });
     document.querySelectorAll(".routine-del").forEach(function(btn){
