@@ -266,10 +266,23 @@
     el.className = "custom-food-section";
 
     el.innerHTML =
-      // My Foods library
-      '<div class="nut-section-head" style="margin-bottom:8px">🍱 My Foods</div>' +
+      '<div class="cf-lib-header">' +
+        '<div class="nut-section-head" style="margin:0">🍱 My Foods</div>' +
+        '<span class="cf-lib-count" id="cf-lib-count"></span>' +
+      '</div>' +
+      '<div class="cf-filter-bar" id="cf-filter-bar" hidden>' +
+        '<div class="cf-filter-wrap">' +
+          '<span style="font-size:13px;margin-right:6px">🔍</span>' +
+          '<input class="inp cf-filter-input" id="cf-filter" type="search" placeholder="Filter my foods…" autocomplete="off">' +
+        '</div>' +
+        '<select class="cf-sort-select inp" id="cf-sort">' +
+          '<option value="recent">Recent</option>' +
+          '<option value="name">A–Z</option>' +
+          '<option value="cal">Calories</option>' +
+          '<option value="protein">Protein</option>' +
+        '</select>' +
+      '</div>' +
       '<div class="food-list" id="nut-list-custom"></div>' +
-      // Add new form (collapsible)
       '<div class="custom-food-form" style="margin-top:10px">' +
         '<div class="custom-food-header" id="custom-food-toggle">' +
           '<span>➕ Create New Custom Food</span>' +
@@ -298,15 +311,45 @@
       chevron.textContent = body.hidden ? "▾" : "▴";
     });
 
-    var listEl = el.querySelector("#nut-list-custom");
+    var listEl    = el.querySelector("#nut-list-custom");
+    var filterEl  = el.querySelector("#cf-filter");
+    var sortEl    = el.querySelector("#cf-sort");
+    var filterBar = el.querySelector("#cf-filter-bar");
+    var countEl   = el.querySelector("#cf-lib-count");
+
+    function getFiltered() {
+      var all   = getCustomFoods();
+      var query = (filterEl.value || "").trim().toLowerCase();
+      var sort  = sortEl.value;
+      var foods = query
+        ? all.filter(function(f){ return (f.foodName||"").toLowerCase().indexOf(query) !== -1; })
+        : all;
+      foods = foods.slice().sort(function(a, b) {
+        if (sort === "name")    return (a.foodName||"").localeCompare(b.foodName||"");
+        if (sort === "cal")     return (b.per100.cal||0) - (a.per100.cal||0);
+        if (sort === "protein") return (b.per100.p||0)   - (a.per100.p||0);
+        return 0; // "recent" keeps insertion order
+      });
+      return { all: all, filtered: foods };
+    }
 
     function refreshMyFoods() {
-      var foods = getCustomFoods();
+      var result = getFiltered();
+      var total  = result.all.length;
+      var shown  = result.filtered.length;
+      filterBar.hidden = total < 5;
+      countEl.textContent = total === 0 ? "" : (shown < total ? shown + " of " + total : total + " saved");
       listEl._onLog = onLog;
       listEl._onFav = function(){};
-      renderList(listEl, foods, "No custom foods yet — create one below.", refreshMyFoods);
+      var emptyMsg = total === 0
+        ? "No custom foods yet — create one below."
+        : 'No match for "' + (filterEl.value||"").trim() + '"';
+      renderList(listEl, result.filtered, emptyMsg, refreshMyFoods);
     }
     refreshMyFoods();
+
+    filterEl.addEventListener("input",  refreshMyFoods);
+    sortEl.addEventListener("change",   refreshMyFoods);
 
     // Save & Log
     el.querySelector("#cf-add-btn").addEventListener("click", function() {
@@ -555,6 +598,12 @@
       ".sk-line{border-radius:6px;background:linear-gradient(90deg,var(--c2) 25%,var(--c3) 50%,var(--c2) 75%);background-size:200% 100%;animation:skShimmer 1.2s linear infinite}",
       "@keyframes skShimmer{to{background-position:-200% 0}}",
       ".custom-food-section{}",
+      ".cf-lib-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}",
+      ".cf-lib-count{font-size:10px;font-weight:700;color:var(--mt);background:var(--c2);padding:2px 8px;border-radius:999px}",
+      ".cf-filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:10px}",
+      ".cf-filter-wrap{flex:1;display:flex;align-items:center;background:var(--c2);border-radius:10px;padding:0 10px;height:36px}",
+      ".cf-filter-input{flex:1;border:none;outline:none;background:transparent;color:var(--tx);font-size:13px;min-width:0}",
+      ".cf-sort-select{flex-shrink:0;height:36px;padding:0 8px;font-size:12px;border-radius:10px;background:var(--c2);border:1px solid var(--c3);color:var(--tx);cursor:pointer}",
       ".custom-food-form{background:var(--c1);border:1px solid var(--c2);border-radius:14px;overflow:hidden;margin-top:0}",
       ".custom-food-header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:13px;font-weight:800;cursor:pointer;user-select:none}",
       ".custom-food-header:hover{background:var(--c2)}",
