@@ -2372,113 +2372,157 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
     el.innerHTML = "";
   }
 
-  // Barcode scanning (Safari-safe, graceful fallback)
-  function scanFoodBarcode() {
-    // Requires HTTPS + user gesture
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      return alert("Camera not available in this browser.");
-    }
-    if (typeof BarcodeDetector === "undefined") {
-      alert("Barcode scanning isn\'t supported on this Safari version. You can still search & add foods manually.");
-      return;
-    }
+  PATCH 2 — Replace the entire scanFoodBarcode() function in app.js.
+//           This version uses Open Food Facts for barcode lookups so you
+//           get real nutritional data instantly, no manual mapping needed.
+// ─────────────────────────────────────────────────────────────────────────────
 
-    showModal(
-      '<div style="padding:12px">'+
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
-          '<div style="font-size:14px;font-weight:800">📷 Scan Barcode</div>'+
-          '<button class="del" id="scan-x">×</button>'+
-        '</div>'+
-        '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Point your camera at a barcode. If it matches a saved item, it will be added. Otherwise you can link it.</div>'+
-        '<video id="scan-vid" autoplay playsinline style="width:100%;border-radius:12px;background:#000;max-height:240px"></video>'+
-        '<div id="scan-msg" style="margin-top:10px;font-size:11px;color:var(--mt)">Starting camera…</div>'+
-        '<div id="scan-link" style="display:none;margin-top:12px"></div>'+
-      '</div>'
-    );
-
-    var stop = function(stream) {
-      if (!stream) return;
-      try { stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
-    };
-
-    var streamRef = null;
-    var detector = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","qr_code"] });
-    var vid = document.getElementById("scan-vid");
-    var msg = document.getElementById("scan-msg");
-    var link = document.getElementById("scan-link");
-    var close = function(){ stop(streamRef); closeModal(); };
-
-    var x = document.getElementById("scan-x");
-    if (x) x.addEventListener("click", close);
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-      .then(function(stream){
-        streamRef = stream;
-        vid.srcObject = stream;
-        msg.textContent = "Scanning…";
-        var tick = function(){
-          if (!vid || vid.readyState < 2) { requestAnimationFrame(tick); return; }
-          detector.detect(vid).then(function(codes){
-            if (codes && codes.length) {
-              var raw = codes[0].rawValue || "";
-              if (!raw) { requestAnimationFrame(tick); return; }
-              // Found a code
-              msg.textContent = "Found: " + raw;
-              // If mapped, add immediately
-              var fk = NUPC[raw];
-              if (fk && NFOODS[fk]) {
-                if (!NLOG[selDate]) NLOG[selDate] = [];
-                NLOG[selDate].push(calcItem(NFOODS[fk], 0, 1));
-                saveAll();
-                stop(streamRef);
-                closeModal();
-                render();
-                return;
-              }
-              // Otherwise offer linking
-              var opts = Object.keys(NFOODS).sort().map(function(k){
-                return '<option value="'+esc(k)+'">'+esc(NFOODS[k].name)+'</option>';
-              }).join("");
-              link.style.display = "block";
-              link.innerHTML =
-                '<div style="background:var(--c2);border-radius:12px;padding:10px">'+
-                  '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Link barcode to a food</div>'+
-                  '<select class="inp" id="scan-pick" style="width:100%;margin-bottom:8px">'+opts+'</select>'+
-                  '<div class="row" style="gap:8px">'+
-                    '<button class="btn bp" id="scan-link-btn" style="flex:1">Save Link</button>'+
-                    '<button class="btn bs" id="scan-cancel" style="width:110px">Cancel</button>'+
-                  '</div>'+
-                '</div>';
-              var cancel = document.getElementById("scan-cancel");
-              if (cancel) cancel.addEventListener("click", close);
-              var linkBtn = document.getElementById("scan-link-btn");
-              if (linkBtn) linkBtn.addEventListener("click", function(){
-                var pick = document.getElementById("scan-pick");
-                var key = pick ? pick.value : "";
-                if (!key || !NFOODS[key]) return;
-                NUPC[raw] = key;
-                saveAll();
-                if (!NLOG[selDate]) NLOG[selDate] = [];
-                NLOG[selDate].push(calcItem(NFOODS[key], 0, 1));
-                saveAll();
-                stop(streamRef);
-                closeModal();
-                render();
-              });
-              // pause loop (keep stream) until user acts
-              return;
-            }
-            requestAnimationFrame(tick);
-          }).catch(function(){
-            requestAnimationFrame(tick);
-          });
-        };
-        requestAnimationFrame(tick);
-      })
-      .catch(function(err){
-        msg.textContent = "Camera error: " + (err && err.message ? err.message : err);
-      });
+function scanFoodBarcode() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return alert("Camera not available in this browser.");
   }
+  if (typeof BarcodeDetector === "undefined") {
+    alert("Barcode scanning requires a supported browser (Chrome on Android or iOS 17+).");
+    return;
+  }
+
+  showModal(
+    '<div style="padding:14px">' +
+      '<div class="row" style="justify-content:space-between;margin-bottom:10px">' +
+        '<div style="font-size:16px;font-weight:900">📷 Scan Barcode</div>' +
+        '<button class="del" id="scan-x" style="font-size:22px">×</button>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">' +
+        'Point your camera at a product barcode. Powered by Open Food Facts.' +
+      '</div>' +
+      '<video id="scan-vid" autoplay playsinline style="width:100%;border-radius:14px;background:#000;max-height:250px;display:block"></video>' +
+      '<div id="scan-msg" style="margin-top:10px;font-size:12px;color:var(--mt);text-align:center">Starting camera…</div>' +
+      '<div id="scan-result" style="display:none;margin-top:12px"></div>' +
+    '</div>'
+  );
+
+  var streamRef = null;
+  var scanning  = true;
+  var detector  = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","qr_code"] });
+  var vid       = document.getElementById("scan-vid");
+  var msgEl     = document.getElementById("scan-msg");
+  var resultEl  = document.getElementById("scan-result");
+  var api       = window._IronLogFoodApi; // exposed by foodApi.js
+
+  function stop() {
+    scanning = false;
+    if (streamRef) { streamRef.getTracks().forEach(function(t){ try { t.stop(); } catch(e){} }); streamRef = null; }
+  }
+
+  function close() { stop(); closeModal(); }
+
+  var xBtn = document.getElementById("scan-x");
+  if (xBtn) xBtn.addEventListener("click", close);
+
+  function showFoundFood(apiFood) {
+    stop();
+    var p100  = apiFood.per100 || {};
+    var servG = apiFood.serving ? apiFood.serving.grams : 100;
+    var ratio = servG / 100;
+
+    resultEl.style.display = "block";
+    resultEl.innerHTML =
+      '<div class="food-result-card">' +
+        (apiFood.image ? '<img src="' + apiFood.image + '" style="width:100%;max-height:120px;object-fit:contain;border-radius:10px;margin-bottom:10px">' : '') +
+        '<div style="font-size:14px;font-weight:900;margin-bottom:2px">' + esc(apiFood.foodName) + '</div>' +
+        (apiFood.brand ? '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">' + esc(apiFood.brand) + '</div>' : '') +
+        '<div style="font-size:10px;color:var(--mt);margin-bottom:8px">' +
+          'Per 100g — Cal: ' + Math.round(p100.cal||0) + ' · P: ' + (p100.p||0) + 'g · C: ' + (p100.c||0) + 'g · F: ' + (p100.f||0) + 'g' +
+        '</div>' +
+        '<div class="row" style="gap:8px">' +
+          '<div class="log-amount-wrap" style="background:var(--c2);border-radius:10px;padding:0 8px;display:flex;align-items:center;gap:4px">' +
+            '<input class="inp" type="number" id="scan-grams" min="1" step="1" value="' + servG + '" style="width:64px;background:transparent;border:none">' +
+            '<span style="font-size:11px;color:var(--mt)">g</span>' +
+          '</div>' +
+          '<button class="btn bp" id="scan-add" style="flex:1">➕ Add to log</button>' +
+        '</div>' +
+      '</div>';
+
+    var addBtn = document.getElementById("scan-add");
+    if (addBtn) addBtn.addEventListener("click", function() {
+      var g = parseFloat(document.getElementById("scan-grams").value) || servG;
+      var entry = api.apiItemToLogEntry(apiFood, g);
+      if (entry) {
+        ensureDay(selDate);
+        NLOG[selDate].push(entry);
+        saveAll();
+        close();
+        render();
+      }
+    });
+  }
+
+  function showNotFound(barcode) {
+    stop();
+    msgEl.textContent = "Barcode " + barcode + " not found in Open Food Facts.";
+    msgEl.style.color = "var(--yl)";
+    resultEl.style.display = "block";
+    resultEl.innerHTML =
+      '<div style="font-size:12px;color:var(--mt);margin-bottom:8px">Try searching the food by name instead:</div>' +
+      '<div class="row" style="gap:6px">' +
+        '<input class="inp" id="scan-fallback-name" placeholder="e.g., Peanut Butter" style="flex:1">' +
+        '<button class="btn bp" id="scan-fallback-search">Search</button>' +
+      '</div>' +
+      '<div id="scan-fallback-results" style="margin-top:10px"></div>';
+
+    var searchBtn = document.getElementById("scan-fallback-search");
+    if (searchBtn) searchBtn.addEventListener("click", function() {
+      var q = (document.getElementById("scan-fallback-name").value || "").trim();
+      if (!q || !api) return;
+      var resEl = document.getElementById("scan-fallback-results");
+      resEl.innerHTML = '<div style="font-size:11px;color:var(--mt)">Searching…</div>';
+      api.searchFood(q, 5).then(function(results) {
+        if (!results.length) { resEl.innerHTML = '<div style="font-size:11px;color:var(--mt)">No results.</div>'; return; }
+        resEl.innerHTML = "";
+        results.forEach(function(food) {
+          var btn = document.createElement("button");
+          btn.className = "btn bs";
+          btn.style.cssText = "width:100%;text-align:left;margin-bottom:6px;padding:10px;font-size:12px;display:block";
+          btn.textContent = food.foodName + (food.brand ? " — " + food.brand : "") +
+                            " (" + Math.round(food.per100.cal||0) + " cal/100g)";
+          btn.addEventListener("click", function() { showFoundFood(food); });
+          resEl.appendChild(btn);
+        });
+      });
+    });
+  }
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+    .then(function(stream) {
+      streamRef = stream;
+      vid.srcObject = stream;
+      msgEl.textContent = "Scanning — hold steady…";
+
+      function tick() {
+        if (!scanning) return;
+        if (vid.readyState < 2) { requestAnimationFrame(tick); return; }
+        detector.detect(vid).then(function(codes) {
+          if (!scanning) return;
+          if (codes && codes.length) {
+            var raw = (codes[0].rawValue || "").trim();
+            if (!raw) { requestAnimationFrame(tick); return; }
+            msgEl.textContent = "Found barcode: " + raw + " — looking up…";
+            if (!api) { showNotFound(raw); return; }
+            api.lookupBarcode(raw).then(function(food) {
+              if (food) showFoundFood(food);
+              else showNotFound(raw);
+            });
+          } else {
+            requestAnimationFrame(tick);
+          }
+        }).catch(function() { requestAnimationFrame(tick); });
+      }
+      requestAnimationFrame(tick);
+    })
+    .catch(function(err) {
+      msgEl.textContent = "Camera error: " + (err && err.message ? err.message : "Permission denied");
+    });
+}
 
   // -----------------------------
   // RENDER
@@ -4234,4 +4278,25 @@ normalizeRoutines();
 saveAll();
    initAuth();
   render();
+   // Expose render + addFoodEntry for module bridging
+window._ilRender = function() { render(); };
+
+window._IronLogApp = {
+  addFoodEntry: function(logEntry) {
+    if (!logEntry) return;
+    ensureDay(selDate);
+
+    // Enrich the entry with an id if missing
+    if (!logEntry.id) logEntry.id = uid();
+    if (!logEntry.at)  logEntry.at  = Date.now();
+
+    NLOG[selDate].push(logEntry);
+    saveAll();
+    render();
+  },
+
+  getSelDate:    function() { return selDate; },
+  getNutritionGoals: function() { return calcAutoGoals(); },
+  getDayTotals:  function(ds) { return dayNutrition(ds || selDate).totals; }
+};
 });
