@@ -2372,10 +2372,6 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
     el.innerHTML = "";
   }
 
-  PATCH 2 — Replace the entire scanFoodBarcode() function in app.js.
-//           This version uses Open Food Facts for barcode lookups so you
-//           get real nutritional data instantly, no manual mapping needed.
-// ─────────────────────────────────────────────────────────────────────────────
 
 function scanFoodBarcode() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
