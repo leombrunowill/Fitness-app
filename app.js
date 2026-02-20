@@ -2900,37 +2900,10 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       h += '</div>';
 
       h += '<div class="card">';
-      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">➕ Add Food</div>';
-      h += '<div style="display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:end">';
-       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Food</div>';
-      h += '<input class="inp" id="food-name" placeholder="e.g., chicken, rice, yogurt" list="foodlist"></div>';
- h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Amount</div><input class="inp" type="number" id="food-amount" placeholder="Amount" step="0.1"></div>';
-       h += '</div>';
-h += '<div style="margin-top:10px"><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Measurement for this entry</div><select class="inp" id="food-unit"><option value="grams"'+(USER.nutritionUnit==='grams'?' selected':'')+'>grams</option><option value="ounces"'+(USER.nutritionUnit==='ounces'?' selected':'')+'>ounces</option><option value="bottles"'+(USER.nutritionUnit==='bottles'?' selected':'')+'>servings</option></select></div>';
-       h += '<div class="row" style="gap:8px;margin-top:10px"><button class="btn bp bf" id="add-food-btn" style="flex:1">Add</button><button class="btn bs bf" id="scan-food-btn" style="width:120px">📷 Scan</button></div>';
-      h += '<div class="row" style="gap:8px;margin-top:8px"><button class="btn bs bf" id="open-custom-food-btn" style="flex:1">🧪 Custom food + macros</button></div>';
-
-      h += '<datalist id="foodlist">';
-      Object.keys(NFOODS).sort().forEach(function(k){
-        h += '<option value="'+esc(NFOODS[k].name)+'"></option>';
-      });
-      h += '</datalist>';
-
-      h += '<div style="margin-top:12px;font-size:12px;font-weight:900">⚡ Quick Add</div>';
-      h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">';
-      QUICK_FOODS.forEach(function(nm){
-        var food = findFoodByName(nm);
-        var it = food ? calcItem(food, 0, 1) : null; // default serving
-        var meta = it ? ('<span style="font-size:9px;color:var(--mt);margin-left:6px">'+it.cal+' cal · '+it.p+'P</span>') : '';
-        h += '<button class="btn bs food-quick" data-name="'+esc(nm)+'" style="padding:6px 10px;font-size:11px;display:flex;align-items:center;gap:6px">'+
-              '<span>'+esc(nm)+'</span>'+meta+
-             '</button>';
-      });
-      h += '</div>';
-
-h += '<div style="margin-top:10px;font-size:10px;color:var(--mt)">Choose grams, ounces, or servings each time you log food.</div>';
-       h += '</div>';
-
+  h += '<div style="font-size:13px;font-weight:900;margin-bottom:4px">➕ Search & Log Food</div>';
+  h += '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Searches 2M+ foods via USDA + Open Food Facts</div>';
+  h += '<div id="api-search-root"></div>';
+  h += '</div>';
 
       // Meal presets
       h += '<div class="card">';
@@ -3207,6 +3180,17 @@ h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save 
     }
 
     app.innerHTML = h;
+    if (view === "track" && trackMode === "nutrition") {
+  var apiRoot = document.getElementById("api-search-root");
+  if (apiRoot && typeof initSearchFood === "function") {
+    apiRoot.innerHTML = "";
+    initSearchFood(apiRoot, {
+      onFoodLog: function(food, entry) {
+        window._IronLogApp.addFoodEntry(entry);
+      }
+    });
+  }
+}
      app.classList.remove("view-transition-out");
     app.classList.add("view-transition-in");
     setTimeout(function(){ app.classList.remove("view-transition-in"); }, 220);
