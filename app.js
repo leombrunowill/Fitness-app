@@ -343,7 +343,7 @@ function progressToneForEntry(entry){
 }
 function buildDashboardAnalytics(){
   var muscleMap = {Chest:'Chest',Back:'Back',Legs:'Legs',Shoulders:'Shoulders',Arms:'Arms',Core:'Core'};
-  var targets = { Chest: 16, Back: 16, Legs: 18, Shoulders: 12, Arms: 10, Core: 8 };
+  var targets = { Chest: 16, Back: 16, Legs: 18, Shoulders: 12, Arms: 16, Core: 8 };
   var muscleVolumes = { Chest:0, Back:0, Legs:0, Shoulders:0, Arms:0, Core:0 };
   var exerciseProgress = [];
   var prsThisWeek = 0;
@@ -2848,7 +2848,7 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       h += '</div>';
 
        var mSets = setCountsByMuscle(7);
-      var targets = { Chest:[10,18], Back:[12,20], Legs:[10,18], Shoulders:[8,16], Arms:[8,16], Core:[6,14], Cardio:[3,12] };
+      var targets = { Chest:[10,18], Back:[12,20], Legs:[10,18], Shoulders:[8,16], Arms:[14,28], Core:[6,14], Cardio:[3,12] };
       h += '<div class="card">';
       h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🧠 Muscle Balance Intelligence (last 7 days)</div>';
       Object.keys(targets).forEach(function(gm){
