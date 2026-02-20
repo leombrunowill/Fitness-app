@@ -43,26 +43,16 @@
     return out;
   }
 
-  function servingLabel(food) {
-    if (food.serving) {
-      return "1 srv (" + food.serving.grams + "g) = " +
-             Math.round((food.per100.cal || 0) * food.serving.grams / 100) + " cal";
-    }
-    return "100g = " + (food.calories || 0) + " cal";
-  }
-
-  // Simple in-memory favorites (no Supabase dependency)
+  // ── Favorites & Recent (localStorage) ────────────────────────────────────
   var _favs = {};
   try { _favs = JSON.parse(localStorage.getItem("il_food_favs") || "{}"); } catch(e){}
-  function isFav(food) { return !!_favs[food.id]; }
+  function isFav(food)    { return !!_favs[food.id]; }
   function toggleFav(food) {
     if (_favs[food.id]) { delete _favs[food.id]; } else { _favs[food.id] = food; }
     try { localStorage.setItem("il_food_favs", JSON.stringify(_favs)); } catch(e){}
     return !!_favs[food.id];
   }
-  function getFavs(limit) {
-    return Object.values(_favs).slice(0, limit || 8);
-  }
+  function getFavs(limit)   { return Object.values(_favs).slice(0, limit || 8); }
 
   var _recent = [];
   try { _recent = JSON.parse(localStorage.getItem("il_food_recent") || "[]"); } catch(e){}
@@ -74,17 +64,37 @@
   }
   function getRecent(limit) { return _recent.slice(0, limit || 8); }
 
+  // ── Food card builder ─────────────────────────────────────────────────────
   function buildFoodCard(food, onLog, onFavToggle) {
-    var fav   = isFav(food);
-    var p100  = food.per100 || {};
-    var name  = food.foodName || "Unknown";
-    var brand = food.brand || "";
-    var img   = food.image || "";
-    var defaultG = food.serving ? food.serving.grams : 100;
+    var fav    = isFav(food);
+    var p100   = food.per100 || {};
+    var name   = food.foodName || "Unknown";
+    var brand  = food.brand || "";
+    var img    = food.image || "";
+    var hasSrv = food.serving && food.serving.grams > 0;
+    var srvG   = hasSrv ? food.serving.grams : 100;
+    var srvLbl = hasSrv ? (food.serving.label || "serving") : null;
 
     var el = document.createElement("div");
     el.className = "food-result-card";
     el.setAttribute("data-food-id", food.id || "");
+
+    // Build the amount input row — serving-first if we have serving data
+    var amountHtml;
+    if (hasSrv) {
+      amountHtml =
+        '<div class="log-amount-wrap srv-mode">' +
+          '<input class="inp log-servings" type="number" min="0.25" step="0.25" value="1" placeholder="srv">' +
+          '<span class="grams-label">' + esc(srvLbl) + '</span>' +
+        '</div>' +
+        '<button class="gram-toggle-btn" title="Switch to grams">g</button>';
+    } else {
+      amountHtml =
+        '<div class="log-amount-wrap gram-mode">' +
+          '<input class="inp log-grams" type="number" min="1" step="1" value="100" placeholder="g">' +
+          '<span class="grams-label">g</span>' +
+        '</div>';
+    }
 
     el.innerHTML =
       '<div class="food-card-top">' +
@@ -94,44 +104,70 @@
           (brand ? '<div class="food-card-brand">' + esc(brand) + '</div>' : '') +
           '<div class="food-card-badges">' + sourceBadge(food.source) + '</div>' +
           '<div class="food-card-macros">' +
-            macroChip("Cal", Math.round(p100.cal || 0), "#f59e0b") +
-            macroChip("P",   (p100.p || 0) + "g", "#60a5fa") +
-            macroChip("C",   (p100.c || 0) + "g", "#34d399") +
-            macroChip("F",   (p100.f || 0) + "g", "#f472b6") +
+            macroChip("Cal", Math.round(p100.cal || 0), "#f59e0b") + ' per 100g' +
           '</div>' +
-          '<div class="food-card-serving">' + esc(servingLabel(food)) + '</div>' +
+          (hasSrv ?
+            '<div class="food-card-serving">1 ' + esc(srvLbl) + ' = ' + srvG + 'g = ' + Math.round((p100.cal||0)*srvG/100) + ' cal</div>'
+            : '<div class="food-card-serving">No serving info — entering grams</div>'
+          ) +
         '</div>' +
         '<button class="fav-btn ' + (fav ? "on" : "") + '" aria-label="Toggle favorite" data-fav>' +
           (fav ? "⭐" : "☆") +
         '</button>' +
       '</div>' +
       '<div class="food-log-row">' +
-        '<div class="log-amount-wrap">' +
-          '<input class="inp log-grams" type="number" min="1" step="1" value="' + defaultG + '" placeholder="g">' +
-          '<span class="grams-label">g</span>' +
-        '</div>' +
+        amountHtml +
         '<div class="log-macros-preview" data-preview></div>' +
         '<button class="btn bp log-confirm-btn" data-log>Add</button>' +
       '</div>';
 
-    // Live macro preview
-    var gramsEl   = el.querySelector(".log-grams");
     var previewEl = el.querySelector("[data-preview]");
+
+    function getGrams() {
+      var srvInput = el.querySelector(".log-servings");
+      var gInput   = el.querySelector(".log-grams");
+      if (srvInput) return (parseFloat(srvInput.value) || 1) * srvG;
+      return parseFloat(gInput ? gInput.value : 100) || 100;
+    }
+
     function updatePreview() {
-      var g = parseFloat(gramsEl.value) || defaultG;
-      var r = g / 100;
+      var g = getGrams(), r = g / 100;
       previewEl.textContent =
-        Math.round((p100.cal || 0) * r) + " cal · " +
-        ((p100.p  || 0) * r).toFixed(1) + "p · " +
-        ((p100.c  || 0) * r).toFixed(1) + "c · " +
-        ((p100.f  || 0) * r).toFixed(1) + "f";
+        Math.round((p100.cal||0)*r) + " cal · " +
+        ((p100.p||0)*r).toFixed(1) + "p · " +
+        ((p100.c||0)*r).toFixed(1) + "c · " +
+        ((p100.f||0)*r).toFixed(1) + "f";
     }
     updatePreview();
-    gramsEl.addEventListener("input", updatePreview);
+
+    var anyInput = el.querySelector(".log-servings") || el.querySelector(".log-grams");
+    if (anyInput) anyInput.addEventListener("input", updatePreview);
+
+    // Toggle between serving and gram mode
+    var toggleBtn = el.querySelector(".gram-toggle-btn");
+    if (toggleBtn) {
+      var inSrvMode = true;
+      toggleBtn.addEventListener("click", function() {
+        inSrvMode = !inSrvMode;
+        var wrap = el.querySelector(".log-amount-wrap");
+        if (inSrvMode) {
+          wrap.className = "log-amount-wrap srv-mode";
+          wrap.innerHTML = '<input class="inp log-servings" type="number" min="0.25" step="0.25" value="1" placeholder="srv"><span class="grams-label">' + esc(srvLbl) + '</span>';
+          toggleBtn.textContent = "g";
+        } else {
+          wrap.className = "log-amount-wrap gram-mode";
+          wrap.innerHTML = '<input class="inp log-grams" type="number" min="1" step="1" value="' + srvG + '" placeholder="g"><span class="grams-label">g</span>';
+          toggleBtn.textContent = "srv";
+        }
+        var inp = wrap.querySelector("input");
+        if (inp) inp.addEventListener("input", updatePreview);
+        updatePreview();
+      });
+    }
 
     // Add button
     el.querySelector("[data-log]").addEventListener("click", function() {
-      var g = parseFloat(gramsEl.value) || defaultG;
+      var g   = getGrams();
       var api = window._IronLogFoodApi;
       if (!api) return;
       var entry = api.apiItemToLogEntry(food, g);
@@ -163,9 +199,93 @@
     });
   }
 
+  // ── Custom food form ──────────────────────────────────────────────────────
+  function buildCustomFoodForm(onLog) {
+    var el = document.createElement("div");
+    el.className = "custom-food-form";
+    el.innerHTML =
+      '<div class="custom-food-header" id="custom-food-toggle">' +
+        '<span>➕ Add Custom Food</span>' +
+        '<span class="custom-food-chevron">▾</span>' +
+      '</div>' +
+      '<div class="custom-food-body" id="custom-food-body" hidden>' +
+        '<div class="custom-food-grid">' +
+          '<div class="custom-field"><label>Name *</label><input class="inp" id="cf-name" placeholder="e.g. Homemade Pasta" type="text"></div>' +
+          '<div class="custom-field"><label>Serving size</label><input class="inp" id="cf-serving" placeholder="e.g. 1 bowl" type="text"></div>' +
+          '<div class="custom-field"><label>Grams per serving</label><input class="inp" id="cf-grams" type="number" min="1" step="1" value="100"></div>' +
+          '<div class="custom-field"><label>Calories *</label><input class="inp" id="cf-cal" type="number" min="0" step="1" placeholder="kcal"></div>' +
+          '<div class="custom-field"><label>Protein (g)</label><input class="inp" id="cf-p" type="number" min="0" step="0.1" value="0"></div>' +
+          '<div class="custom-field"><label>Carbs (g)</label><input class="inp" id="cf-c" type="number" min="0" step="0.1" value="0"></div>' +
+          '<div class="custom-field"><label>Fat (g)</label><input class="inp" id="cf-f" type="number" min="0" step="0.1" value="0"></div>' +
+        '</div>' +
+        '<button class="btn bp" id="cf-add-btn" style="width:100%;margin-top:8px">Log Custom Food</button>' +
+        '<div id="cf-error" style="color:var(--rd);font-size:11px;margin-top:6px;display:none"></div>' +
+      '</div>';
+
+    // Toggle collapse
+    el.querySelector("#custom-food-toggle").addEventListener("click", function() {
+      var body    = el.querySelector("#custom-food-body");
+      var chevron = el.querySelector(".custom-food-chevron");
+      body.hidden = !body.hidden;
+      chevron.textContent = body.hidden ? "▾" : "▴";
+    });
+
+    // Add button
+    el.querySelector("#cf-add-btn").addEventListener("click", function() {
+      var name   = (el.querySelector("#cf-name").value  || "").trim();
+      var srvLbl = (el.querySelector("#cf-serving").value || "").trim();
+      var grams  = parseFloat(el.querySelector("#cf-grams").value)  || 100;
+      var cal    = parseFloat(el.querySelector("#cf-cal").value)    || 0;
+      var p      = parseFloat(el.querySelector("#cf-p").value)      || 0;
+      var c      = parseFloat(el.querySelector("#cf-c").value)      || 0;
+      var f      = parseFloat(el.querySelector("#cf-f").value)      || 0;
+      var errEl  = el.querySelector("#cf-error");
+
+      if (!name) { errEl.textContent = "Name is required."; errEl.style.display = "block"; return; }
+      if (!cal)  { errEl.textContent = "Calories are required."; errEl.style.display = "block"; return; }
+      errEl.style.display = "none";
+
+      // Convert to per-100g for consistency
+      var ratio = 100 / grams;
+      var entry = {
+        id:       "custom_" + Date.now().toString(16),
+        name:     name + (srvLbl ? " (" + srvLbl + ")" : ""),
+        source:   "Custom",
+        apiId:    null,
+        key:      null,
+        grams:    Math.round(grams),
+        servings: 1,
+        cal:      Math.round(cal),
+        p:        +p.toFixed(1),
+        c:        +c.toFixed(1),
+        f:        +f.toFixed(1),
+        at:       Date.now()
+      };
+
+      onLog(null, entry, grams);
+
+      // Flash confirm and reset
+      var btn = el.querySelector("#cf-add-btn");
+      btn.textContent = "✓ Added!";
+      btn.style.background = "var(--gn)";
+      setTimeout(function() {
+        btn.textContent = "Log Custom Food";
+        btn.style.background = "";
+        el.querySelector("#cf-name").value = "";
+        el.querySelector("#cf-cal").value  = "";
+        el.querySelector("#cf-p").value    = "0";
+        el.querySelector("#cf-c").value    = "0";
+        el.querySelector("#cf-f").value    = "0";
+      }, 1200);
+    });
+
+    return el;
+  }
+
+  // ── Main init ─────────────────────────────────────────────────────────────
   function initSearchFood(root, opts) {
-    opts = opts || {};
-    var onLog = opts.onFoodLog || function(){};
+    opts  = opts || {};
+    var onLog   = opts.onFoodLog      || function(){};
     var onFavCb = opts.onFoodFavorite || function(){};
 
     injectStyles();
@@ -178,13 +298,13 @@
         '</div>' +
         '<div class="nut-search-wrap">' +
           '<span class="nut-search-icon">🔍</span>' +
-          '<input class="nut-search-input inp" id="nut-search-input" type="search" placeholder="e.g. chicken breast, oats…" autocomplete="off">' +
+          '<input class="nut-search-input inp" id="nut-search-input" type="search" placeholder="e.g. Big Mac, chicken breast…" autocomplete="off">' +
           '<div class="nut-spinner" id="nut-spinner" hidden></div>' +
         '</div>' +
-        '<div class="nut-source-note">Results from USDA + Open Food Facts</div>' +
+        '<div class="nut-source-note">Results from USDA + Open Food Facts · serving sizes shown when available</div>' +
         '<div class="nut-sections">' +
           '<section class="nut-section" id="nut-sec-search" hidden>' +
-            '<div class="nut-section-head" id="nut-search-head" hidden>Search Results</div>' +
+            '<div class="nut-section-head" id="nut-search-head">Search Results</div>' +
             '<div class="food-list" id="nut-list-search"></div>' +
           '</section>' +
           '<section class="nut-section" id="nut-sec-fav">' +
@@ -195,22 +315,26 @@
             '<div class="nut-section-head">🕒 Recent</div>' +
             '<div class="food-list" id="nut-list-recent"></div>' +
           '</section>' +
+          '<section class="nut-section" id="nut-sec-custom"></section>' +
         '</div>' +
       '</div>';
 
     var searchInput = root.querySelector("#nut-search-input");
     var spinner     = root.querySelector("#nut-spinner");
     var secSearch   = root.querySelector("#nut-sec-search");
-    var searchHead  = root.querySelector("#nut-search-head");
     var listSearch  = root.querySelector("#nut-list-search");
     var secFav      = root.querySelector("#nut-sec-fav");
     var listFav     = root.querySelector("#nut-list-fav");
     var secRecent   = root.querySelector("#nut-sec-recent");
     var listRecent  = root.querySelector("#nut-list-recent");
+    var secCustom   = root.querySelector("#nut-sec-custom");
 
-    // Attach callbacks to list containers (accessed in renderList)
+    // Attach callbacks
     listSearch._onLog = listFav._onLog = listRecent._onLog = onLog;
     listSearch._onFav = listFav._onFav = listRecent._onFav = onFavCb;
+
+    // Add custom food form
+    secCustom.appendChild(buildCustomFoodForm(onLog));
 
     function loadFavsAndRecent() {
       var favs   = getFavs(8);
@@ -236,7 +360,7 @@
 
       var api = window._IronLogFoodApi;
       if (!api) {
-        listSearch.innerHTML = '<p class="nut-empty nut-error">Food API not loaded. Check console.</p>';
+        listSearch.innerHTML = '<p class="nut-empty nut-error">Food API not loaded.</p>';
         secSearch.hidden = false;
         return;
       }
@@ -244,14 +368,13 @@
       secFav.hidden    = true;
       secRecent.hidden = true;
       secSearch.hidden = false;
-      searchHead.hidden = false;
       spinner.hidden   = false;
       listSearch.innerHTML = renderSkeleton(5);
 
       api.searchFood(q, 20).then(function(results) {
-        if (q !== lastQuery) return; // stale result
+        if (q !== lastQuery) return;
         spinner.hidden = true;
-        renderList(listSearch, results, 'No results for "' + q + '". Try a different spelling.');
+        renderList(listSearch, results, 'No results for "' + q + '". Try a different spelling or use Add Custom Food below.');
       }).catch(function() {
         spinner.hidden = true;
         listSearch.innerHTML = '<p class="nut-empty nut-error">Search failed. Check your connection.</p>';
@@ -266,7 +389,6 @@
         secSearch.hidden = true;
         secFav.hidden    = getFavs().length === 0;
         secRecent.hidden = getRecent().length === 0;
-        searchHead.hidden = true;
       }
     });
 
@@ -296,6 +418,7 @@
       ".food-list{display:grid;gap:8px}",
       ".nut-empty{font-size:11px;color:var(--mt);border:1px dashed var(--c3);border-radius:12px;padding:14px;text-align:center}",
       ".nut-error{color:var(--rd)}",
+      /* food card */
       ".food-result-card{background:var(--c1);border:1px solid var(--c2);border-radius:14px;padding:12px;transition:border-color .15s,box-shadow .15s;animation:cardIn .18s ease both}",
       ".food-result-card:hover{border-color:var(--bl)}",
       "@keyframes cardIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}",
@@ -305,26 +428,41 @@
       ".food-card-info{flex:1;min-width:0}",
       ".food-card-name{font-size:13px;font-weight:800;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".food-card-brand{font-size:10px;color:var(--mt);margin-top:1px}",
-      ".food-card-badges{margin:4px 0 5px}",
+      ".food-card-badges{margin:4px 0 3px}",
       ".source-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;display:inline-block}",
       ".source-badge.usda{background:rgba(34,197,94,.15);color:#4ade80}",
       ".source-badge.off{background:rgba(59,130,246,.15);color:#60a5fa}",
       ".source-badge.local{background:rgba(168,85,247,.15);color:#c084fc}",
-      ".food-card-macros{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}",
+      ".food-card-macros{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:2px;align-items:center;font-size:10px;color:var(--mt)}",
       ".macro-chip{font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--c2);color:var(--chip,var(--tx))}",
-      ".food-card-serving{font-size:10px;color:var(--mt)}",
+      ".food-card-serving{font-size:10px;color:var(--mt);font-weight:600}",
       ".fav-btn{font-size:20px;background:none;border:none;padding:2px 4px;flex-shrink:0;line-height:1;opacity:.55;transition:opacity .15s,transform .15s;cursor:pointer}",
       ".fav-btn:hover,.fav-btn.on{opacity:1}",
       ".fav-btn:active{transform:scale(1.3)}",
+      /* log row */
       ".food-log-row{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--c2)}",
       ".log-amount-wrap{display:flex;align-items:center;gap:4px;background:var(--c2);border-radius:10px;padding:0 8px;flex-shrink:0}",
-      ".log-grams{width:58px;height:34px;background:transparent;border:none;color:var(--tx);font-size:13px;font-weight:700;text-align:center;outline:none}",
-      ".grams-label{font-size:11px;color:var(--mt);font-weight:600}",
+      ".log-servings,.log-grams{width:54px;height:34px;background:transparent;border:none;color:var(--tx);font-size:13px;font-weight:700;text-align:center;outline:none}",
+      ".grams-label{font-size:11px;color:var(--mt);font-weight:600;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+      ".gram-toggle-btn{font-size:10px;font-weight:800;padding:4px 8px;border-radius:8px;background:var(--c3);border:none;color:var(--mt);cursor:pointer;flex-shrink:0}",
+      ".gram-toggle-btn:hover{color:var(--tx)}",
       ".log-macros-preview{flex:1;min-width:0;font-size:10px;color:var(--mt);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".log-confirm-btn{padding:8px 14px;font-size:12px;flex-shrink:0}",
+      /* skeleton */
       ".food-result-card.skeleton{pointer-events:none}",
       ".sk-line{border-radius:6px;background:linear-gradient(90deg,var(--c2) 25%,var(--c3) 50%,var(--c2) 75%);background-size:200% 100%;animation:skShimmer 1.2s linear infinite}",
-      "@keyframes skShimmer{to{background-position:-200% 0}}"
+      "@keyframes skShimmer{to{background-position:-200% 0}}",
+      /* custom food form */
+      ".custom-food-form{background:var(--c1);border:1px solid var(--c2);border-radius:14px;overflow:hidden}",
+      ".custom-food-header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:13px;font-weight:800;cursor:pointer;user-select:none}",
+      ".custom-food-header:hover{background:var(--c2)}",
+      ".custom-food-chevron{font-size:16px;color:var(--mt)}",
+      ".custom-food-body{padding:0 14px 14px}",
+      ".custom-food-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}",
+      ".custom-food-grid .custom-field:first-child,.custom-food-grid .custom-field:nth-child(2){grid-column:span 2}",
+      ".custom-field{display:flex;flex-direction:column;gap:3px}",
+      ".custom-field label{font-size:10px;font-weight:700;color:var(--mt);text-transform:uppercase;letter-spacing:.05em}",
+      ".custom-field .inp{padding:8px 10px;font-size:13px}"
     ].join("\n");
     var style = document.createElement("style");
     style.textContent = css;
@@ -332,5 +470,5 @@
   }
 
   window._IronLogSearchFood = { initSearchFood: initSearchFood };
-  console.log("[Iron Log] Search food UI ready.");
+  console.log("[Iron Log] Search food UI ready (serving-first + custom food).");
 })();
