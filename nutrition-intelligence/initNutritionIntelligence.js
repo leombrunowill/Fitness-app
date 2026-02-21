@@ -10,6 +10,10 @@
     var Y = window.NutritionPhysiqueStatus;
     var T = window.NutritionWorkoutTiming;
 
+      if (!W || !C || !P || !M || !A || !Y || !T) {
+      return null;
+    }
+
     var rolling = W.rollingAverage(input.bodyweightLogs, 7);
     var weeklyRate = W.weeklyRate(rolling);
     var latestAvg = rolling.length ? rolling[rolling.length - 1].average : null;
