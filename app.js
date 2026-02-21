@@ -2944,7 +2944,7 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       if (typeof window.initNutritionIntelligence === "function") {
         var bwRows = Object.keys(BW).sort().map(function(d){ return { date: d, weight: +BW[d] || 0 }; });
         var last7 = buildLast7NutritionFromCache();
-        var adherence = calculateWorkoutAdherence();
+var adherence = weeklyAdherence();
         intelligence = window.initNutritionIntelligence({
           bodyweightLogs: bwRows,
           goalWeight: +USER.bodyweightGoal || 170,
