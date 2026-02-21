@@ -831,6 +831,7 @@ var view = ld("il_view", "home");
    var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
      var PROG_PR_FILTER = ld("il_progress_pr_filter", null); // selected exercises shown in progress PR list
   var NLOG = ld("il_nlog", {});   // nutrition log by date
+   var DN_CACHE = ld("il_daily_nutrition_cache", {}); // cached nutrition totals by date
    var RLIB = ld("il_routines", []); // saved workout routines
   var RSCHED = ld("il_routine_sched", {}); // weekday -> routine id
   var NUPC = ld("il_nupc", {});   // barcode -> foodKey mapping
@@ -844,7 +845,11 @@ var view = ld("il_view", "home");
     cutAggressiveness: "performance", // legacy support
      weightUnit: "lbs", // "lbs" | "kg"
     nutritionUnit: "grams", // "grams" | "ounces" | "bottles"
-    autoGoals: true
+autoGoals: true,
+    goal_type: "cut",
+    weekly_rate_target: -0.5,
+    protein_target_per_lb: 0.9,
+    auto_calorie_adjustments: false
   });
 function normalizeUSER(u) {
     var src = (u && typeof u === "object" && !Array.isArray(u)) ? u : {};
@@ -856,7 +861,11 @@ function normalizeUSER(u) {
       cutAggressiveness: (src.cutAggressiveness === "performance" || src.cutAggressiveness === "aggressive") ? src.cutAggressiveness : (src.goalPace || "moderate"),
       weightUnit: src.weightUnit === "kg" ? "kg" : "lbs",
       nutritionUnit: (src.nutritionUnit === "ounces" || src.nutritionUnit === "bottles") ? src.nutritionUnit : "grams",
-      autoGoals: src.autoGoals !== false
+autoGoals: src.autoGoals !== false,
+      goal_type: (src.goal_type === "maintain" || src.goal_type === "bulk") ? src.goal_type : (src.goalMode || "cut"),
+      weekly_rate_target: isFinite(+src.weekly_rate_target) ? +src.weekly_rate_target : -0.5,
+      protein_target_per_lb: isFinite(+src.protein_target_per_lb) ? +src.protein_target_per_lb : 0.9,
+      auto_calorie_adjustments: !!src.auto_calorie_adjustments
     };
   }
 var SOC = ld("il_social", {
@@ -942,6 +951,7 @@ function normalizeWeightUnit(unit) {
     return u === "ounces" ? "oz" : (u === "bottles" ? "bottle(s)" : "g");
   }
   function saveAll() {
+         refreshDailyNutritionCache(selDate);
     sv("il_th", TH);
     sv("il_view", view);
          sv("il_track_mode", trackMode);
@@ -952,6 +962,7 @@ function normalizeWeightUnit(unit) {
     sv("il_pr", PR);
          sv("il_progress_pr_filter", PROG_PR_FILTER);
     sv("il_nlog", NLOG);
+         sv("il_daily_nutrition_cache", DN_CACHE);
      sv("il_routines", RLIB);
     sv("il_routine_sched", RSCHED);
     sv("il_nfoods", NFOODS);
@@ -971,6 +982,7 @@ function normalizeWeightUnit(unit) {
       bw: BW || {},
       pr: PR || {},
       nlog: NLOG || {},
+             ncache: DN_CACHE || {},
       nfoods: NFOODS || {},
       user_settings: USER || {},
       th: TH || "dark",
@@ -989,6 +1001,7 @@ function normalizeWeightUnit(unit) {
       BW = row.bw || {};
       PR = row.pr || {};
       NLOG = row.nlog || {};
+             DN_CACHE = row.ncache || {};
       NFOODS = row.nfoods || {};
       USER = normalizeUSER(row.user_settings || {});
       TH = row.th || "dark";
@@ -2113,6 +2126,34 @@ servingAmount: parseFloat((document.getElementById("cf-serv-amt") || {}).value) 
     return { items: items, totals: totals };
   }
 
+    function refreshDailyNutritionCache(ds) {
+    var d = ds || selDate;
+    var day = dayNutrition(d);
+    DN_CACHE[d] = {
+      date: d,
+      calories: day.totals.cal,
+      protein: day.totals.p,
+      carbs: day.totals.c,
+      fat: day.totals.f,
+      updated_at: Date.now()
+    };
+  }
+
+  function getNutritionTotalsFromCache(ds) {
+    var d = ds || selDate;
+    if (!DN_CACHE[d]) refreshDailyNutritionCache(d);
+    return DN_CACHE[d];
+  }
+
+  function buildLast7NutritionFromCache() {
+    var out = [];
+    for (var i = 6; i >= 0; i--) {
+      var d = addDays(selDate, -i);
+      out.push(getNutritionTotalsFromCache(d));
+    }
+    return out;
+  }
+
   // -----------------------------
   // Auto targets (cut 12-15% BF)
   // -----------------------------
@@ -2898,6 +2939,48 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       h += '<div style="height:8px;background:var(--c2);border-radius:8px;overflow:hidden"><div style="height:100%;width:'+pPct+'%;background:linear-gradient(to right,var(--gn),var(--yl))"></div></div>';
       h += '</div>';
       h += '</div>';
+
+        var intelligence = null;
+      if (typeof window.initNutritionIntelligence === "function") {
+        var bwRows = Object.keys(BW).sort().map(function(d){ return { date: d, weight: +BW[d] || 0 }; });
+        var last7 = buildLast7NutritionFromCache();
+        var adherence = calculateWorkoutAdherence();
+        intelligence = window.initNutritionIntelligence({
+          bodyweightLogs: bwRows,
+          goalWeight: +USER.bodyweightGoal || 170,
+          weeklyRateTarget: +USER.weekly_rate_target || -0.5,
+          calorieTarget: goals.cal,
+          autoCalorieAdjustments: !!USER.auto_calorie_adjustments,
+          targets: { calories: goals.cal, protein: goals.p, carbs: goals.c, fat: goals.f },
+          totals: { calories: totals.cal, protein: totals.p, carbs: totals.c, fat: totals.f },
+          logItems: dayData.items,
+          last7DaysNutrition: last7,
+          hasWorkoutToday: !!((W[selDate] || []).length),
+          nextWorkoutInMinutes: ((W[addDays(selDate, 1)] || []).length ? 90 : 999),
+          workoutAdherence: Math.round((adherence.workouts / Math.max(1, adherence.plan)) * 100),
+          goalType: USER.goal_type || USER.goalMode || "cut"
+        });
+      }
+
+      if (intelligence && window.NutritionIntelligenceUI) {
+        var UI = window.NutritionIntelligenceUI;
+        h += UI.NutritionInsightCard('📉 Bodyweight Trend', intelligence.trendInsight.message, intelligence.trendInsight.status === 'on_track' ? 'good' : 'warn');
+        if (intelligence.projection) {
+          h += UI.NutritionInsightCard('🎯 Goal Projection', 'Projected goal date: ' + intelligence.projection.date + ' (' + intelligence.projection.weeks + ' weeks).', 'neutral');
+        }
+        h += UI.RemainingMacrosCard(intelligence.remaining);
+        h += UI.ProteinScoreRing(intelligence.proteinScore);
+        h += UI.CalorieAdjustmentAlert(intelligence.calorieAdjustment);
+        h += UI.NutritionInsightCard('🏋️ Workout Nutrition Coach', intelligence.workoutGuidance.message, 'neutral');
+        h += UI.NutritionInsightCard('🧬 Physique Progress Panel', intelligence.physiqueStatus + '. Weekly nutrition adherence: ' + intelligence.calorieScore + '%.', 'good');
+        h += UI.DailyChecklist([
+          { label: 'Hit calories', done: Math.abs(goals.cal - totals.cal) <= 150 },
+          { label: 'Hit protein', done: totals.p >= goals.p },
+          { label: 'Pre-workout meal logged', done: intelligence.workoutGuidance.phase !== 'pre' },
+          { label: 'Post-workout meal logged', done: intelligence.workoutGuidance.phase !== 'post' || totals.p >= (goals.p * 0.7) },
+          { label: 'Within weight-trend target', done: intelligence.trendInsight.status === 'on_track' }
+        ]);
+      }
 
       h += '<div class="card">';
   h += '<div style="font-size:13px;font-weight:900;margin-bottom:4px">➕ Search & Log Food</div>';
@@ -3874,6 +3957,7 @@ document.querySelectorAll(".food-del").forEach(function(btn){
         if (isNaN(i)) return;
         if (!NLOG[selDate]) return;
         NLOG[selDate].splice(i, 1);
+                 refreshDailyNutritionCache(selDate);
         saveAll();
         render();
       };
@@ -4193,7 +4277,7 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
 
     var exportBtn = document.getElementById("export-btn");
     if (exportBtn) exportBtn.onclick = function(){
-var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC, RLIB:RLIB, RSCHED:RSCHED };
+var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, DN_CACHE:DN_CACHE, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC, RLIB:RLIB, RSCHED:RSCHED };
        var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -4216,6 +4300,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
           if (data.BW) BW = data.BW;
           if (data.PR) PR = data.PR;
           if (data.NLOG) NLOG = data.NLOG;
+                     if (data.DN_CACHE) DN_CACHE = data.DN_CACHE;
           if (data.NFOODS) NFOODS = data.NFOODS;
           if (data.USER) USER = data.USER;
                      sanitizeWorkoutState();
@@ -4239,8 +4324,8 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, NFOODS:NFOODS, USER:USER, TH:TH, SOC:
     var resetBtn = document.getElementById("reset-btn");
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
- W = {}; BW = {}; PR = {}; NLOG = {}; SOC = normalizeSOC(); RLIB = DEFAULT_ROUTINES.slice(); RSCHED = {};
-            sanitizeWorkoutState();
+ W = {}; BW = {}; PR = {}; NLOG = {}; DN_CACHE = {}; SOC = normalizeSOC(); RLIB = DEFAULT_ROUTINES.slice(); RSCHED = {};
+       sanitizeWorkoutState();
        sanitizeNutritionState();
       saveAll();
       render();
@@ -4271,6 +4356,7 @@ window._IronLogApp = {
     if (!logEntry.at)  logEntry.at  = Date.now();
 
     NLOG[selDate].push(logEntry);
+         refreshDailyNutritionCache(selDate);
     saveAll();
     render();
   },
