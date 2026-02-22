@@ -430,3 +430,33 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 @keyframes valuePulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
 
 @media (max-width:380px){.ring-grid{grid-template-columns:1fr;}}
+
+/* === Phase 2: Workout + Nutrition premium interaction layer === */
+.tab-switcher .track-mode{border-radius:14px;border:1px solid var(--border-hairline);background:rgba(255,255,255,.03)}
+.tab-switcher .track-mode.on{background:linear-gradient(130deg,rgba(216,255,63,.2),rgba(121,169,255,.2));color:var(--text-primary)}
+.exercise-card-v2{position:relative;overflow:hidden}
+.exercise-card-v2::after{content:"";position:absolute;inset:auto 0 0 0;height:1px;background:linear-gradient(90deg,transparent,rgba(216,255,63,.4),transparent)}
+.set-grid .inp{height:46px;font-size:19px;font-weight:800}
+.weight-stepper{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
+.ws-btn{border:none;background:rgba(216,255,63,.12);color:var(--accent);font-weight:800;border-radius:12px;padding:0 10px;height:44px;min-width:44px;transition:transform .2s ease, background .2s ease;will-change:transform}
+.ws-btn:active{transform:scale(.94);background:rgba(216,255,63,.25)}
+.set-complete{margin-top:10px;width:100%;border:1px dashed rgba(121,169,255,.5);background:rgba(121,169,255,.08)}
+.set-complete-done{border-color:rgba(216,255,63,.8)!important;box-shadow:0 0 0 1px rgba(216,255,63,.3),0 0 20px rgba(216,255,63,.2)}
+
+/* Nutrition macro bars */
+.nutrition-root .card, .card .macro-bar{will-change:transform}
+.macro-fill{height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--accent-2));transform-origin:left center;animation:macroGrow .55s cubic-bezier(0.22,1,0.36,1)}
+@keyframes macroGrow{from{transform:scaleX(.2);opacity:.4}to{transform:scaleX(1);opacity:1}}
+
+/* Native page transitions */
+.ctn{will-change:transform,opacity}
+.view-transition-in{animation:nativeIn .28s cubic-bezier(.22,1,.36,1)}
+.view-transition-out{animation:nativeOut .2s ease both}
+@keyframes nativeIn{from{opacity:.3;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes nativeOut{from{opacity:1;transform:translateX(0)}to{opacity:.2;transform:translateX(-8px)}}
+
+/* Skeleton states */
+.skeleton{position:relative;overflow:hidden;background:rgba(255,255,255,.06)!important;color:transparent!important}
+.skeleton::before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.2) 45%,transparent 60%);animation:skel 1.1s linear infinite}
+@keyframes skel{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
