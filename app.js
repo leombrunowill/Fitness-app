@@ -4486,4 +4486,5 @@ window._IronLogApp = {
   getNutritionGoals: function() { return calcAutoGoals(); },
   getDayTotals:  function(ds) { return dayNutrition(ds || selDate).totals; }
 };
+    }
 });
