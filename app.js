@@ -4,8 +4,9 @@
    - Auto calorie/protein targets (cut 12–15% BF) based on latest bodyweight, activity assumptions
 */
 
-document.addEventListener("DOMContentLoaded", function () {
-  "use strict";
+(function () {
+  function bootIronLogApp() {
+    "use strict";
 
   function showFatalScreen(msg) {
     var app = document.getElementById("app");
@@ -32,6 +33,40 @@ document.addEventListener("DOMContentLoaded", function () {
     showFatalScreen(m);
   });
 
+     // Mount watchdog: force initial render if startup path is interrupted.
+  var mountWatchAttempts = 0;
+  function ensureInitialMount() {
+    var appEl = document.getElementById("app");
+    if (!appEl) return;
+    if (String(appEl.innerHTML || "").trim()) return;
+
+    var renderFn = null;
+    if (typeof window._ilRender === "function") renderFn = window._ilRender;
+    else if (typeof render === "function") renderFn = render;
+
+    mountWatchAttempts += 1;
+    if (!renderFn) {
+      if (mountWatchAttempts < 10) {
+        setTimeout(ensureInitialMount, 200 * mountWatchAttempts);
+      } else {
+        showFatalScreen("Startup did not complete. Please reload or reset local data from Profile.");
+      }
+      return;
+    }
+
+    try {
+      renderFn();
+    } catch (err) {
+      showFatalScreen((err && err.message) ? err.message : "Failed to render app");
+      return;
+    }
+
+    if (!String(appEl.innerHTML || "").trim() && mountWatchAttempts < 10) {
+      setTimeout(ensureInitialMount, 200 * mountWatchAttempts);
+    }
+  }
+  setTimeout(ensureInitialMount, 200);
+     
   // -----------------------------
   // Storage helpers
   // -----------------------------
@@ -4495,4 +4530,16 @@ window._IronLogApp = {
   getDayTotals:  function(ds) { return dayNutrition(ds || selDate).totals; }
 };
     }
-});
+
+     var hasBooted = false;
+  function startBoot() {
+    if (hasBooted) return;
+    hasBooted = true;
+    bootIronLogApp();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startBoot, { once: true });
+  }
+  startBoot();
+})();
