@@ -27,7 +27,7 @@ function toneFromVolume(cur, tgt) {
   return 'green';
 }
 
-function analyticsFromRemote(remote, fallback) {
+function analyticsFromRemote(remote, fallback, weekStartIso) {
   if (!remote || remote.error) return fallback;
 
   const targets = Object.assign({ Chest: 16, Back: 16, Legs: 18, Shoulders: 12, Arms: 10, Core: 8 }, (fallback && fallback.targets) || {});
@@ -47,15 +47,20 @@ function analyticsFromRemote(remote, fallback) {
     const id = ex.id || ex.exercise_id;
     if (!id) return;
     const primary = normalizeName(ex.primary_muscle || ex.group || ex.muscle_group);
-    exById[id] = {
+    exById[String(id)] = {
       exercise: ex.name || ex.exercise_name || 'Exercise',
       muscle: map[primary] || null
     };
   });
 
-  (remote.sets || []).forEach((st) => {
+  const setsInWindow = (remote.sets || []).filter((st) => {
+    const at = String(st.date || st.workout_date || st.created_at || '');
+    return !weekStartIso || !at || at.slice(0, 10) >= weekStartIso;
+  });
+
+  setsInWindow.forEach((st) => {
     const exId = st.exercise_id || st.exerciseId;
-    const info = exById[exId];
+    const info = exById[String(exId)];
     if (info && info.muscle) muscleVolumes[info.muscle] += 1;
 
     if (info && info.exercise) {
@@ -75,11 +80,12 @@ function analyticsFromRemote(remote, fallback) {
     return { exercise: name, prReady: prev > 0 && latest >= prev * 0.97, tone };
   });
 
-  const workoutDates = (remote.workouts || []).map((w) => w.date).filter(Boolean);
+  const workoutDates = Array.from(new Set((remote.workouts || []).map((w) => w.date).filter(Boolean))).sort().reverse();
+  const workoutsInWindow = workoutDates.filter((d) => !weekStartIso || d >= weekStartIso);
   const bodyweightLogs = (remote.bodyweight || []).map((bw) => ({ date: bw.date, weight: +(bw.weight || bw.bodyweight || 0) }));
 
   const plan = ((fallback && fallback.weekly && fallback.weekly.workoutsPlanned) || 5);
-  const workoutsDone = workoutDates.length;
+  const workoutsDone = workoutsInWindow.length;
   const adherencePct = Math.round((plan ? Math.min(1, workoutsDone / plan) : 0) * 100);
 
   const profile = remote.profile || {};
@@ -97,7 +103,7 @@ function analyticsFromRemote(remote, fallback) {
     needsProfile: !(profile.training_goal || profile.experience_level),
     weekly: Object.assign({}, (fallback && fallback.weekly) || {}, {
       workoutsDone,
-      setsDone: (remote.sets || []).length,
+      setsDone: setsInWindow.length,
       setsTarget: ((fallback && fallback.weekly && fallback.weekly.setsTarget) || 90)
     }),
     volumeTones: Object.keys(targets).reduce((acc, muscle) => {
@@ -114,8 +120,10 @@ export async function initDashboard(ctx) {
 
   let analytics = ctx.analytics || {};
   try {
-    const remote = await fetchDashboardData(isoDaysAgo(13));
-    analytics = analyticsFromRemote(remote, analytics);
+    const weekStartIso = isoDaysAgo(6);
+    const streakStartIso = isoDaysAgo(179);
+    const remote = await fetchDashboardData(weekStartIso, streakStartIso);
+    analytics = analyticsFromRemote(remote, analytics, weekStartIso);
   } catch (_err) {
     // graceful local fallback
   }

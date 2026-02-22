@@ -423,17 +423,26 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .nb.is-pressed,.btn.is-pressed{transform:scale(.96);}
 
 .dashboard-page{display:grid;gap:12px;}
-.dashboard-hero{padding:4px 2px 0;}
+.dashboard-page > *{min-width:0;}
+.dashboard-hero{padding:4px 2px 0;overflow:hidden;}
 .ring-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
 .progress-ring-card{background:var(--surface-glass);border:1px solid var(--border-hairline);border-radius:18px;padding:10px;display:grid;place-items:center;gap:4px;}
 .progress-ring{width:74px;height:74px;transform:rotate(-90deg);}
 .ring-track{fill:none;stroke:rgba(255,255,255,.12);stroke-width:12;}
 .ring-value{fill:none;stroke-linecap:round;stroke-width:12;transition:stroke-dasharray .5s var(--ease-out, cubic-bezier(0.22,1,0.36,1));}
-.metric-card{padding:14px;}
+.metric-card{padding:14px;overflow:hidden;}
 .dashboard-stack{display:grid;gap:10px;}
 
-.focus-item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08);}
+.dashboard-duo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.dashboard-focus{padding:14px;overflow:hidden;}
+.dashboard-focus .display-metric{font-size:clamp(1.2rem,4.8vw,1.8rem);line-height:1.2;word-break:break-word;}
+.dashboard-focus-body{margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);}
+.weight-log-inline .row{flex-wrap:wrap;}
+.weight-log-inline .inp{height:42px;min-width:140px;}
+.focus-item{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08);}
 .focus-item.top{border-top:none;padding-top:0;}
+.focus-item>div{min-width:0;flex:1 1 180px;}
+.home-focus-action{flex:0 0 auto;}
 .focus-routine-pill{display:inline-flex;border:1px solid rgba(216,255,63,.35);background:rgba(216,255,63,.08);padding:4px 10px;border-radius:999px;font-size:11px;margin-bottom:8px;}
 
 .dashboard-stagger{opacity:0;transform:translateY(10px) scale(.99);}
@@ -442,6 +451,7 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .value-pulse{animation:valuePulse .35s ease-out;}
 @keyframes valuePulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
 
+@media (max-width:560px){.dashboard-duo{grid-template-columns:1fr;}.ring-grid{grid-template-columns:1fr;}}
 @media (max-width:380px){.ring-grid{grid-template-columns:1fr;}}
 
 /* === Phase 2: Workout + Nutrition premium interaction layer === */
