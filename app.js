@@ -2573,6 +2573,12 @@ function scanFoodBarcode() {
 
     var app = document.getElementById("app");
     if (!app) return;
+    if (!window.__ironlogSkeletonDone) {
+      window.__ironlogSkeletonDone = true;
+      app.innerHTML = '<div class="card skeleton" style="height:108px;margin-bottom:10px"></div><div class="card skeleton" style="height:160px;margin-bottom:10px"></div><div class="card skeleton" style="height:220px"></div>';
+      setTimeout(function(){ queueRender(0); }, 120);
+      return;
+    } 
 var nav = document.querySelector(".bnav");
     var timerBar = document.getElementById("tbar");
     var loggedIn = isSignedIn();
@@ -2611,14 +2617,14 @@ if (view === "home") {
       var homeDay = dayNutrition(selDate);
       var homeTotals = homeDay.totals;
       var homeGoals = calcAutoGoals();
-      var weightInfo = getRecentWeightTrendInfo();
+var weightInfo = getRecentWeightTrendInfo();
    var todayWeight = BW[selDate] ? (+BW[selDate] || 0) : weightInfo.today;
       var focusData = buildTodayFocusData();
       var todayFocusItems = (focusData.items || []).slice(0, 2);
       var lastWorkout = getLastWorkoutSummary();
       var homeCalRemaining = Math.max(0, (homeGoals.cal || 0) - (homeTotals.cal || 0));
       var homeProteinRemaining = Math.max(0, (homeGoals.p || 0) - Math.round(homeTotals.p || 0));
-     var caloriePct = homeGoals.cal ? Math.round((homeTotals.cal / homeGoals.cal) * 100) : 0;
+      var caloriePct = homeGoals.cal ? Math.round((homeTotals.cal / homeGoals.cal) * 100) : 0;
       var proteinPct = homeGoals.p ? Math.round((homeTotals.p / homeGoals.p) * 100) : 0;
 
       var focusHtml = '';
@@ -2632,7 +2638,7 @@ if (view === "home") {
           focusHtml += '</div>';
         });
       } else {
-focusHtml += '<div class="empty-state"><div class="empty-icon">✅</div><div><div class="empty-title">Great coverage this week</div><div class="empty-meta">No urgent muscle-group gaps right now.</div></div></div>';
+        focusHtml += '<div class="empty-state"><div class="empty-icon">✅</div><div><div class="empty-title">Great coverage this week</div><div class="empty-meta">No urgent muscle-group gaps right now.</div></div></div>';
       }
        focusHtml += '<div class="row" style="gap:8px;margin-top:10px">';
       focusHtml += '<button class="btn bs" id="home-log-food" style="flex:1">Log Food</button>';
@@ -2643,16 +2649,16 @@ focusHtml += '<div class="empty-state"><div class="empty-icon">✅</div><div><di
       focusHtml += '<button class="btn bs" id="home-weight-toggle" style="flex:1">'+(homeWeightEntryOpen ? 'Close Weight' : 'Log Weight')+'</button>';
       focusHtml += '</div>';
       if (homeWeightEntryOpen) {
-         focusHtml += '<div class="row" style="gap:8px;margin-top:10px">';
+       focusHtml += '<div class="row" style="gap:8px;margin-top:10px">';
         focusHtml += '<input type="number" class="inp input-large" id="bw-inp" style="flex:1" placeholder="'+weightUnitLabel()+'" value="'+(BW[selDate] ? toDisplayWeight(BW[selDate]) : '')+'">';
         focusHtml += '<button class="btn bp" id="bw-btn">Save</button>';
         focusHtml += '</div>';
       }
 
-var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
+  var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
       if (dashboardRenderer) {
         h += dashboardRenderer({
-          greeting: 'Welcome back, ' + esc((P.name || 'Lifter')),
+          greeting: 'Welcome back, ' + esc((((typeof USER!=="undefined" && USER && USER.name) ? USER.name : '') || 'Lifter')),
           headline: 'Push Day — Week ' + (Math.ceil((new Date(selDate+'T00:00:00').getDate()) / 7) || 1),
           adherence: adhPct,
           calories: homeTotals.cal,
@@ -2671,15 +2677,15 @@ var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
     }
 
     if (view === "track") {
-      h += '<div class="row" style="gap:8px;margin-top:8px;margin-bottom:8px"><button class="btn bs track-mode'+(trackMode==='workout'?' on':'')+'" data-mode="workout" style="flex:1">Workout</button><button class="btn bs track-mode'+(trackMode==='nutrition'?' on':'')+'" data-mode="nutrition" style="flex:1">Nutrition</button></div>';
+ h += '<div class="row tab-switcher" style="gap:8px;margin-top:8px;margin-bottom:8px"><button class="btn bs track-mode'+(trackMode==='workout'?' on':'')+'" data-mode="workout" style="flex:1">Workout</button><button class="btn bs track-mode'+(trackMode==='nutrition'?' on':'')+'" data-mode="nutrition" style="flex:1">Nutrition</button></div>';
     }
 
     if (view === "track" && trackMode === "workout") {
       h += "<div id=\"dashboard-v2\"></div>";
        var bw = BW[selDate];
              var bwDisp = bw ? toDisplayWeight(bw) : 0;
-      h += '<div class="card">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center">';
+      h += '<div class="card card-elevated">';
+       h += '<div class="row" style="justify-content:space-between;align-items:center">';
       h += '<div><div style="font-size:10px;color:var(--mt);text-transform:uppercase;font-weight:700">⚖️ Body Weight</div>';
     h += bw ? '<div style="font-size:22px;font-weight:900;color:var(--pk)">'+bwDisp+' '+weightUnitLabel()+'</div>' : '<div style="font-size:11px;color:var(--mt)">Not logged</div>';
        h += '</div>';
@@ -2705,7 +2711,7 @@ var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
         day.forEach(function(ex, idx){
  var lastSession = getLastExerciseSession(ex.exercise, selDate);
           var lastSets = (lastSession && lastSession.entry && Array.isArray(lastSession.entry.sets)) ? lastSession.entry.sets : [];
-          h += '<div class="card exercise-card" style="margin-bottom:8px" data-progress-tone="'+progressToneForEntry(ex)+'" data-strength-mode="'+((ex.setStyle==='standard'&&entryStrengthScore(ex)>600)?'strength':'hypertrophy')+'">';
+ h += '<div class="card exercise-card exercise-card-v2" style="margin-bottom:10px" data-progress-tone="'+progressToneForEntry(ex)+'" data-strength-mode="'+((ex.setStyle==='standard'&&entryStrengthScore(ex)>600)?'strength':'hypertrophy')+'">';
            h += '<div class="row" style="justify-content:space-between;align-items:flex-start">';
           h += '<div><div style="font-size:12px;color:var(--mt);font-weight:700">'+esc(ex.group)+'</div>';
           h += '<div style="font-size:15px;font-weight:900">'+esc(ex.exercise)+'</div>';
@@ -2719,10 +2725,10 @@ return (s.r||0)+'×'+((+s.w||0)>0? (toDisplayWeight(s.w)+' '+weightUnitLabel()):
             h += '</div>';
           h += '<div class="row" style="gap:8px;align-items:center;margin-top:8px">';
           h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Intervals':'Sets')+'</div>';
-          h += '<input class="inp" data-act="set-count" data-i="'+idx+'" type="number" min="1" max="20" value="'+((ex.sets||[]).length||1)+'" style="width:88px;padding:6px 8px">';
-          h += '</div>';
-            h += '<div style="margin-top:8px;display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center">';
-          h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Int':'Set')+'</div>';
+     h += '<input class="inp mono-number" data-act="set-count" data-i="'+idx+'" type="number" min="1" max="20" value="'+((ex.sets||[]).length||1)+'" style="width:88px;padding:6px 8px">';
+           h += '</div>';
+ h += '<div class="set-grid" style="margin-top:8px;display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center">';
+           h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Int':'Set')+'</div>';
           h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Time (min)':'Reps')+'</div>';
  h += '<div style="font-size:10px;color:var(--mt);font-weight:700">'+(isCardioEntry(ex)?'Distance (mi)':'Weight ('+weightUnitLabel()+')')+'</div>';
            (ex.sets || []).forEach(function(st, sIdx){
@@ -2734,11 +2740,12 @@ return (s.r||0)+'×'+((+s.w||0)>0? (toDisplayWeight(s.w)+' '+weightUnitLabel()):
 var lastSet = lastSets[sIdx] || null;
               var lastRepsGhost = lastSet ? (lastSet.r || '') : '';
               var lastWeightGhost = (lastSet && (+lastSet.w || 0) > 0) ? toDisplayWeight(lastSet.w) : 'BW';
-              h += '<input class="inp" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px" placeholder="'+lastRepsGhost+'">';
-h += '<input class="inp" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="'+lastWeightGhost+'">';               
-    }
+  h += '<input class="inp input-large mono-number" data-act="set-reps" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" max="100" value="'+(+st.r||0)+'" style="padding:6px 8px" placeholder="'+lastRepsGhost+'">';
+h += '<div class="weight-stepper"><button class="ws-btn" data-act="adjust-weight" data-i="'+idx+'" data-s="'+sIdx+'" data-delta="-5">−5</button><input class="inp input-large mono-number" data-act="set-weight" data-i="'+idx+'" data-s="'+sIdx+'" type="number" min="0" step="'+(USER.weightUnit==='kg'?'1':'2.5')+'" value="'+((+st.w||0)>0?toDisplayWeight(st.w):'')+'" style="padding:6px 8px" placeholder="'+lastWeightGhost+'"><button class="ws-btn" data-act="adjust-weight" data-i="'+idx+'" data-s="'+sIdx+'" data-delta="5">+5</button></div>'; 
+            }
 });
           h += '</div>';
+            h += '<button class="btn bs set-complete" data-act="set-complete" data-i="'+idx+'">Swipe → Complete Set Block</button>';
           if (ex.note) h += '<div style="margin-top:8px;font-size:11px;color:var(--mt);font-style:italic">📝 '+esc(ex.note)+'</div>';
           h += '</div>';
         });
@@ -2858,8 +2865,8 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
 
        var mSets = setCountsByMuscle(7);
       var targets = { Chest:[10,18], Back:[12,20], Legs:[10,18], Shoulders:[8,16], Arms:[14,28], Core:[6,14], Cardio:[3,12] };
-      h += '<div class="card">';
-      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🧠 Muscle Balance Intelligence (last 7 days)</div>';
+ h += '<div class="card card-elevated">';
+       h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">🧠 Muscle Balance Intelligence (last 7 days)</div>';
       Object.keys(targets).forEach(function(gm){
         var lo = targets[gm][0], hi = targets[gm][1], sets = mSets[gm] || 0;
         var pct = Math.min(100, Math.round((sets / hi) * 100));
@@ -2874,8 +2881,8 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       });
       h += '</div>';
 
-      h += '<div class="card">';
-      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">📌 Detailed Weekly Adherence</div>';
+      h += '<div class="card card-elevated">';
+       h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">📌 Detailed Weekly Adherence</div>';
       h += '<div style="font-size:11px;color:var(--mt)">Score: <strong style="color:var(--gn)">'+adhPct+'%</strong> · Workouts: '+adh.workouts+'/'+adh.plan+'</div>';
       h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">Recovery / volume guardrail: '+volMsg+'</div>';
       h += '</div>';
@@ -2885,11 +2892,11 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
        var dayData = dayNutrition(selDate);
       var totals = dayData.totals;
       var goals = calcAutoGoals();
-      h += '<div class="sect">🍽️ Nutrition</div>';
-      var calPct = Math.min(100, Math.round((totals.cal / goals.cal) * 100));
+h += '<div class="sect section-title" style="font-size:20px;letter-spacing:-.02em;text-transform:none;color:var(--text-primary)">Nutrition</div>';
+       var calPct = Math.min(100, Math.round((totals.cal / goals.cal) * 100));
       var pPct = Math.min(100, Math.round((totals.p / goals.p) * 100));
-      h += '<div class="card">';
-      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<div class="card card-elevated">';
+       h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
       h += '<div style="font-size:13px;font-weight:900">Daily Targets</div>';
  h += '<div style="font-size:10px;color:var(--mt)">Auto ('+esc((goals.mode||"cut").charAt(0).toUpperCase() + (goals.mode||"cut").slice(1))+')</div>';
        h += '</div>';
@@ -2901,11 +2908,11 @@ h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom
       h += '</div>';
       h += '<div style="margin-top:10px">';
       h += '<div style="font-size:10px;color:var(--mt);margin-bottom:4px">Calories ('+calPct+'%)</div>';
-      h += '<div style="height:8px;background:var(--c2);border-radius:8px;overflow:hidden"><div style="height:100%;width:'+calPct+'%;background:linear-gradient(to right,var(--bl),var(--pu))"></div></div>';
-      h += '<div style="height:8px"></div>';
+ h += '<div style="height:10px;background:var(--c2);border-radius:999px;overflow:hidden"><div class="macro-fill" style="width:'+calPct+'%"></div></div>';
+       h += '<div style="height:8px"></div>';
       h += '<div style="font-size:10px;color:var(--mt);margin-bottom:4px">Protein ('+pPct+'%)</div>';
-      h += '<div style="height:8px;background:var(--c2);border-radius:8px;overflow:hidden"><div style="height:100%;width:'+pPct+'%;background:linear-gradient(to right,var(--gn),var(--yl))"></div></div>';
-      h += '</div>';
+  h += '<div style="height:10px;background:var(--c2);border-radius:999px;overflow:hidden"><div class="macro-fill" style="width:'+pPct+'%"></div></div>';
+       h += '</div>';
       h += '</div>';
 
         var intelligence = null;
@@ -2950,15 +2957,15 @@ var adherence = weeklyAdherence();
         ]);
       }
 
-      h += '<div class="card">';
-  h += '<div style="font-size:13px;font-weight:900;margin-bottom:4px">➕ Search & Log Food</div>';
+  h += '<div class="card card-elevated">';
+       h += '<div style="font-size:13px;font-weight:900;margin-bottom:4px">➕ Search & Log Food</div>';
   h += '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">Searches 2M+ foods via USDA + Open Food Facts</div>';
   h += '<div id="api-search-root"></div>';
   h += '</div>';
 
       // Meal presets
-      h += '<div class="card">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<div class="card card-elevated">';
+       h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
       h += '<div style="font-size:13px;font-weight:800">🍱 Meal Presets</div>';
       h += '<div class="row" style="gap:6px">';
       h += '<button class="btn bs" id="open-custom-meal-btn" style="padding:6px 10px;font-size:11px">➕ New meal</button>';
@@ -2983,8 +2990,8 @@ var adherence = weeklyAdherence();
       h += '</div>';
 
 
-      h += '<div class="card">';
-      h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">Food Log</div>';
+      h += '<div class="card card-elevated">';
+       h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">Food Log</div>';
       if (!dayData.items.length) {
         h += '<div style="font-size:11px;color:var(--mt)">No food logged today.</div>';
       } else {
@@ -3011,8 +3018,8 @@ var adherence = weeklyAdherence();
       var weekStart = getWeekWindowStart();
       var weekSummary = getPlannedCompletedForWeek();
       h += '<div class="sect">📁 Plan</div>';
-      h += '<div class="card">';
-      h += '<div class="home-card-title" style="margin-bottom:10px">🗓️ Weekly Schedule</div>';
+      h += '<div class="card card-elevated">';
+       h += '<div class="home-card-title" style="margin-bottom:10px">🗓️ Weekly Schedule</div>';
       h += '<div class="home-meta" style="margin-bottom:10px">Tap a day to assign a routine.</div>';
       h += '<div class="plan-week-grid">';
       for (var wd = 0; wd < 7; wd++) {
@@ -3032,8 +3039,8 @@ var adherence = weeklyAdherence();
       h += '<div class="home-meta" style="margin-top:6px">Next up: '+(nextPlan ? (esc(nextPlan.day)+' — '+esc(nextPlan.routine)) : '— (tap a day to assign)')+'</div>';
       h += '</div>';
 
-      h += '<div class="card">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<div class="card card-elevated">';
+       h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
       h += '<div class="home-card-title">Preset Workout Library</div>';
        h += '<div class="row" style="gap:6px">';
       h += '<button class="btn bs" id="new-routine-btn" style="padding:6px 10px;font-size:11px">➕ New</button>';
@@ -3536,10 +3543,11 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     document.querySelectorAll(".nb").forEach(function(btn){
       btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
     });
- if (window.IronLogAnimations) {
+  if (window.IronLogAnimations) {
       window.IronLogAnimations.addPressFeedback('.nb, .btn, .thm');
       if (view === 'home') window.IronLogAnimations.animateInStagger('.dashboard-stagger', 60);
     }
+     
      var profileBtn = document.getElementById("profile-btn");
     if (profileBtn) profileBtn.onclick = function(){
       view = "profile";
@@ -3694,6 +3702,27 @@ else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) 
         render();
       };
     });
+
+      document.querySelectorAll('[data-act="adjust-weight"]').forEach(function(btn){
+      btn.onclick = function(){
+        var i = this.getAttribute('data-i');
+        var s = this.getAttribute('data-s');
+        var delta = parseFloat(this.getAttribute('data-delta') || '0') || 0;
+        var target = document.querySelector('[data-act="set-weight"][data-i="'+i+'"][data-s="'+s+'"]');
+        if (!target) return;
+        var cur = parseFloat(target.value || '0') || 0;
+        target.value = Math.max(0, cur + delta);
+        target.dispatchEvent(new Event('change'));
+      };
+    });
+
+    document.querySelectorAll('[data-act="set-complete"]').forEach(function(btn){
+      btn.onclick = function(){
+        this.classList.add('set-complete-done');
+        showToast('Set block completed ✅');
+      };
+    });
+     
     document.querySelectorAll('[data-act="jump"]').forEach(function(btn){
       btn.onclick = function(){
         var d = this.getAttribute("data-date");
