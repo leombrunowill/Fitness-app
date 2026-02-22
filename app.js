@@ -361,6 +361,19 @@ function totalSetsLast7(){
   });
   return s;
 }
+function sum7dVolume(){
+  var d=lastNDates(7), v=0;
+  d.forEach(function(day){
+    (W[day]||[]).forEach(function(ex){
+      (ex.sets||[]).forEach(function(st){
+        var r = +((st && st.r) || 0);
+        var w = +((st && st.w) || 0);
+        if (r > 0 && w > 0) v += (r * w);
+      });
+    });
+  });
+  return Math.round(v);
+}
 function weeklyAdherence(){
   var workouts = countWorkoutsLast7();
   var plan = 5; // your typical schedule
@@ -990,7 +1003,8 @@ autoGoals: true,
     goal_type: "cut",
     weekly_rate_target: -0.5,
     protein_target_per_lb: 0.9,
-    auto_calorie_adjustments: false
+    auto_calorie_adjustments: false,
+    manualModeOverride: "auto"
   });
 function normalizeUSER(u) {
     var src = (u && typeof u === "object" && !Array.isArray(u)) ? u : {};
@@ -1006,7 +1020,8 @@ autoGoals: src.autoGoals !== false,
       goal_type: (src.goal_type === "maintain" || src.goal_type === "bulk") ? src.goal_type : (src.goalMode || "cut"),
       weekly_rate_target: isFinite(+src.weekly_rate_target) ? +src.weekly_rate_target : -0.5,
       protein_target_per_lb: isFinite(+src.protein_target_per_lb) ? +src.protein_target_per_lb : 0.9,
-      auto_calorie_adjustments: !!src.auto_calorie_adjustments
+      auto_calorie_adjustments: !!src.auto_calorie_adjustments,
+      manualModeOverride: (src.manualModeOverride === "beginner" || src.manualModeOverride === "intermediate" || src.manualModeOverride === "advanced") ? src.manualModeOverride : "auto"
     };
   }
 var SOC = ld("il_social", {
@@ -2814,6 +2829,42 @@ var weightInfo = getRecentWeightTrendInfo();
         focusHtml += '</div>';
       }
 
+      var adaptive = window.IronLogAdaptive;
+      var behavior = adaptive ? adaptive.getBehavior() : {skipRest:0,fastProgress:0,missedSessions:0};
+      var workoutCount = Object.keys(W || {}).filter(function(k){ return Array.isArray(W[k]) && W[k].length; }).length;
+      var consistencyPct = Math.min(100, Math.round((adh.plan ? (adh.workouts / Math.max(adh.plan,1)) : 0) * 100));
+      var exUsed = {};
+      Object.keys(W || {}).forEach(function(d){ (W[d]||[]).forEach(function(ex){ exUsed[ex.name]=1; }); });
+      var adaptiveCtx = {
+        user: USER,
+        workoutCount: workoutCount,
+        consistency: consistencyPct,
+        exerciseVariety: Object.keys(exUsed).length,
+        weeklyVolume: sum7dVolume(),
+        readiness: (consistencyPct >= 70 ? "Ready to push" : "Deload smart"),
+        nextWorkout: (focusData.routine && focusData.routine.name) ? focusData.routine.name : "Unscheduled",
+        recovery: Math.max(45, Math.min(97, 70 + Math.round((behavior.fastProgress - behavior.skipRest) * 2))),
+        nutrition: Math.max(0, Math.min(100, adhPct)),
+        streak: trainingStreak(),
+        weightTrend: (weightInfo && weightInfo.hasData) ? ((weightInfo.delta7 > 0 ? "+" : "") + toDisplayWeight(weightInfo.delta7 || 0) + " " + weightUnitLabel()) : "No trend",
+        weakPoint: todayFocusItems.length ? todayFocusItems[0].group : "None",
+        prPrediction: lastWorkout ? "Bench +2.5 soon" : "Build baseline"
+      };
+      adaptiveCtx.mode = adaptive ? adaptive.detectMode(adaptiveCtx) : "intermediate";
+      adaptiveCtx.device = adaptive ? adaptive.detectDevice() : "mobile";
+      adaptiveCtx.timeSegment = adaptive ? adaptive.getTimeSegment() : "day";
+      adaptiveCtx.phase = adaptive ? adaptive.getTrainingPhase(adaptiveCtx) : "build";
+
+      h += '<section class="card adaptive-header adaptive-'+adaptiveCtx.mode+'">'+
+        '<div class="adaptive-pill">'+adaptiveCtx.mode.toUpperCase()+' MODE</div>'+
+        '<div class="home-meta">'+adaptiveCtx.phase+' phase - '+adaptiveCtx.timeSegment+' - '+adaptiveCtx.device+'</div>'+
+        (adaptiveCtx.mode === "beginner" ? '<div class="home-guidance">What should I do today? Follow your highlighted focus card and use auto-suggested loading.</div>' : '')+
+      '</section>';
+
+      if (adaptive) {
+        h += adaptive.renderCards(adaptive.homeCards(adaptiveCtx));
+      }
+
   var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
       if (dashboardRenderer) {
         h += dashboardRenderer({
@@ -2852,6 +2903,11 @@ var weightInfo = getRecentWeightTrendInfo();
        h += '</div></div>';
 
       var day = W[selDate] || [];
+      var adaptiveTrack = window.IronLogAdaptive;
+      if (adaptiveTrack && day.length) {
+        var phaseLabel = adaptiveTrack.getTrainingPhase({consistency:60,weeklyVolume:sum7dVolume()});
+        h += adaptiveTrack.workoutModeShell({phase:phaseLabel, exercise:(day[0] && day[0].name) || "Main Lift"});
+      }
       var isFinished = !!WFIN[selDate];
       var sum = workoutSummary(selDate);
       h += '<div class="row" style="gap:8px;margin-bottom:8px">';
@@ -3403,6 +3459,10 @@ h += '<select class="inp" id="set-goal"><option value="cut"'+(gm==='cut'?' selec
       h += '<select class="inp" id="set-goal-pace"><option value="performance"'+(ag==='performance'?' selected':'')+'>performance</option><option value="moderate"'+(ag==='moderate'?' selected':'')+'>moderate</option><option value="aggressive"'+(ag==='aggressive'?' selected':'')+'>aggressive</option></select>';
       h += '</div>';
       h += '<div style="height:10px"></div>';
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Adaptive mode override</div>';
+      var mo = USER.manualModeOverride || "auto";
+      h += '<select class="inp" id="set-mode-override"><option value="auto"'+(mo==='auto'?' selected':'')+'>Auto detect</option><option value="beginner"'+(mo==='beginner'?' selected':'')+'>Beginner</option><option value="intermediate"'+(mo==='intermediate'?' selected':'')+'>Intermediate</option><option value="advanced"'+(mo==='advanced'?' selected':'')+'>Advanced</option></select></div>';
+      h += '<div style="height:10px"></div>';
 h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
        h += '</div>';
 
@@ -3716,6 +3776,7 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
         if (appEl) appEl.classList.add("view-transition-out");
         view = nextView;
         sv("il_view", view);
+        if (window.IronLogAdaptive) window.IronLogAdaptive.trackBehavior("nav_visit", {view:view});
         document.querySelectorAll(".nb").forEach(function(b){ b.classList.remove("on"); });
         this.classList.add("on");
         queueRender(90);
@@ -3724,6 +3785,13 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     document.querySelectorAll(".nb").forEach(function(btn){
       btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
     });
+    if (window.IronLogAdaptive) {
+      var pri = window.IronLogAdaptive.navPriority(view);
+      var nav = document.querySelector(".bnav");
+      if (nav && pri && pri.length) {
+        pri.forEach(function(k){ var node = nav.querySelector('.nb[data-v="'+k+'"]'); if (node) nav.appendChild(node); });
+      }
+    }
   if (window.IronLogAnimations) {
       window.IronLogAnimations.addPressFeedback('.nb, .btn, .thm');
       if (view === 'home') window.IronLogAnimations.animateInStagger('.dashboard-stagger', 60);
@@ -3748,9 +3816,13 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     if (homeStartWorkoutBtn) homeStartWorkoutBtn.onclick = function(){
       view = "track";
       trackMode = "workout";
+      if (window.IronLogAdaptive) window.IronLogAdaptive.trackBehavior("nav_visit", {view:"track"});
       saveAll();
       render();
     };
+
+    var skipRestBehaviorBtn = document.getElementById("skip-rest-behavior");
+    if (skipRestBehaviorBtn) skipRestBehaviorBtn.onclick = function(){ if (window.IronLogAdaptive) window.IronLogAdaptive.trackBehavior("skip_rest"); };
 
      var homeFocusViewAllBtn = document.getElementById("home-focus-viewall");
     if (homeFocusViewAllBtn) homeFocusViewAllBtn.onclick = function(){
@@ -4508,7 +4580,7 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       USER.goalMode = ((document.getElementById("set-goal")||{}).value || "cut");
       USER.goalPace = ((document.getElementById("set-goal-pace")||{}).value || "moderate");
       USER.cutAggressiveness = USER.goalPace;
-     
+      USER.manualModeOverride = ((document.getElementById("set-mode-override")||{}).value || "auto");
        saveAll();
       alert("Saved!");
       render();
