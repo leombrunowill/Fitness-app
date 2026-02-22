@@ -7,6 +7,31 @@
 document.addEventListener("DOMContentLoaded", function () {
   "use strict";
 
+  function showFatalScreen(msg) {
+    var app = document.getElementById("app");
+    if (!app) return;
+    var safeMsg = String(msg || "Unexpected app error").replace(/[&<>\"']/g, function(ch){
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[ch] || ch;
+    });
+    app.innerHTML = '<div class="card" style="margin-top:10px;border:1px solid var(--rd)">'+
+      '<div style="font-size:14px;font-weight:900;margin-bottom:8px">Something went wrong</div>'+
+      '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">'+safeMsg+'</div>'+
+      '<button class="btn bp" id="reload-app-btn" style="width:100%">Reload App</button>'+
+      '</div>';
+    var reloadBtn = document.getElementById("reload-app-btn");
+    if (reloadBtn) reloadBtn.onclick = function(){ location.reload(); };
+  }
+
+  window.addEventListener("error", function(e){
+    var m = (e && e.message) ? e.message : "Runtime error";
+    showFatalScreen(m);
+  });
+  window.addEventListener("unhandledrejection", function(e){
+    var r = e && e.reason;
+    var m = (r && r.message) ? r.message : String(r || "Unhandled promise rejection");
+    showFatalScreen(m);
+  });
+
   // -----------------------------
   // Storage helpers
   // -----------------------------
@@ -414,10 +439,47 @@ function getPlannedCompletedForWeek() {
   for (var i = 0; i < 7; i++) {
     var curDate = addDays(start, i);
     var curDow = new Date(curDate + "T00:00:00").getDay();
-    if (RSCHED[String(curDow)]) planned += 1;
+    var dayPlan = RSCHED[String(curDow)];
+    if (dayPlan && dayPlan !== "__REST__") planned += 1;
     if ((W[curDate] || []).length) completed += 1;
   }
   return { planned: planned, completed: completed, weekStart: start };
+}
+
+function isRestScheduleValue(v) {
+  return v === "__REST__";
+}
+
+function buildWorkoutCalendar(daysBack) {
+  var days = Math.max(7, parseInt(daysBack, 10) || 30);
+  var end = selDate;
+  var start = addDays(end, -(days - 1));
+  var startDate = new Date(start + "T00:00:00");
+  var offset = startDate.getDay();
+  var cells = [];
+
+  for (var pre = 0; pre < offset; pre++) cells.push({ blank: true });
+
+  for (var i = 0; i < days; i++) {
+    var ds = addDays(start, i);
+    var entries = W[ds] || [];
+    var hasWorkout = entries.length > 0;
+    var volume = 0;
+    entries.forEach(function(ex) {
+      (ex.sets || []).forEach(function(st) {
+        volume += (+st.r || 0) * (+st.w || 0);
+      });
+    });
+    cells.push({
+      blank: false,
+      date: ds,
+      day: new Date(ds + "T00:00:00").getDate(),
+      hasWorkout: hasWorkout,
+      volume: Math.round(toDisplayWeight(volume))
+    });
+  }
+
+  return { start: start, end: end, cells: cells };
 }
 
 function getRoutineById(rid) {
@@ -430,6 +492,7 @@ function getRoutineById(rid) {
 function getAssignedRoutineForDate(ds) {
   var dow = new Date(ds + "T00:00:00").getDay();
   var rid = RSCHED[String(dow)] || "";
+  if (isRestScheduleValue(rid)) return { id: "__REST__", name: "Rest Day", isRestDay: true };
   return rid ? getRoutineById(rid) : null;
 }
 
@@ -532,11 +595,45 @@ function getNextPlannedWorkoutSummary(fromDate) {
     var d = addDays(fromDate, i);
     var dow = new Date(d + "T00:00:00").getDay();
     var rid = RSCHED[String(dow)] || "";
-    if (!rid) continue;
+    if (!rid || isRestScheduleValue(rid)) continue;
     var r = getRoutineById(rid);
     return { day: dayNames[dow], routine: r ? r.name : "Routine" };
   }
   return null;
+}
+
+function openFriendScoutModal(friendId) {
+  var fr = findSocialFriend(friendId);
+  if (!fr) return;
+  var lifts = fr.lifts || {};
+  var topLifts = Object.keys(lifts).map(function(k){ return { name: k, val: +lifts[k] || 0 }; }).sort(function(a,b){ return b.val - a.val; }).slice(0, 5);
+  var feedHits = (SOC.feed || []).filter(function(item){ return String(item.user_id || "") === String(fr.id); }).slice(0, 6);
+  var html = '<div style="padding:6px 2px">';
+  html += '<div style="font-size:16px;font-weight:900">'+esc(fr.name)+'</div>';
+  html += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">'+esc(fr.handle || '@athlete')+'</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px">';
+  html += '<div class="meas-item"><div class="meas-val">'+(+fr.workouts||0)+'</div><div class="meas-lbl">Workouts</div></div>';
+  html += '<div class="meas-item"><div class="meas-val">'+(+((lifts["Bench Press"])||0))+'</div><div class="meas-lbl">Bench</div></div>';
+  html += '<div class="meas-item"><div class="meas-val">'+(+((lifts.Squat)||0))+'</div><div class="meas-lbl">Squat</div></div>';
+  html += '</div>';
+  html += '<div style="font-size:12px;font-weight:800;margin-bottom:6px">Top PRs</div>';
+  if (!topLifts.length) {
+    html += '<div class="home-meta">No PRs shared yet.</div>';
+  } else {
+    topLifts.forEach(function(it){ html += '<div class="rec-item" style="margin-bottom:6px"><div>'+esc(it.name)+'</div><div style="font-weight:900">'+it.val+'</div></div>'; });
+  }
+  html += '<div style="font-size:12px;font-weight:800;margin:10px 0 6px">Recent feed</div>';
+  if (!feedHits.length) {
+    html += '<div class="home-meta">No recent shared updates.</div>';
+  } else {
+    feedHits.forEach(function(item){
+      html += '<div class="rec-item" style="margin-bottom:6px"><div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div><div style="font-size:11px;margin-top:4px">'+esc(item.text || '')+'</div></div>';
+    });
+  }
+  html += '<button class="btn bs" id="friend-scout-close" style="width:100%;margin-top:10px">Done</button></div>';
+  showModal(html);
+  var closeBtn = document.getElementById("friend-scout-close");
+  if (closeBtn) closeBtn.onclick = closeModal;
 }
 
 function queueRender(delayMs) {
@@ -2757,32 +2854,33 @@ h += '<div class="weight-stepper"><button class="ws-btn" data-act="adjust-weight
     }
               
     if (view === "progress") {
-      h += '<div class="sect">🧭 Workout History</div>';
-      var dates = Object.keys(W).sort().reverse().filter(function(d){ return (W[d]||[]).length; });
-      if (!dates.length) {
-        h += '<div class="empty"><div style="font-size:36px;margin-bottom:8px">📋</div>No workouts yet.</div>';
-      } else {
-        dates.slice(0, 60).forEach(function(d){
-          var entries = W[d] || [];
-          var vol = 0, sets = 0, cMin = 0, cDist = 0;
-          entries.forEach(function(e){
-            (e.sets||[]).forEach(function(s){
-              vol += (+s.r||0) * (+s.w||0);
-              cMin += (+s.t||0);
-              cDist += (+s.d||0);
-               sets++;
-            });
-          });
-          h += '<div class="card" style="margin-bottom:8px">';
-          h += '<div class="row" style="justify-content:space-between;align-items:center">';
-          h += '<div><div style="font-size:13px;font-weight:900">'+esc(fmtD(d))+'</div>';
-var cardioText = (cMin || cDist) ? (' · '+(Math.round(cMin*10)/10)+' min · '+(Math.round(cDist*100)/100)+' mi') : '';
-h += '<div style="font-size:10px;color:var(--mt)">'+entries.length+' exercises · '+sets+' sets · '+Math.round(toDisplayWeight(vol)).toLocaleString()+' '+weightUnitLabel()+' volume'+cardioText+'</div></div>';
-           h += '<button class="btn bs" data-act="jump" data-date="'+d+'" style="padding:5px 10px;font-size:10px">Open</button>';
-          h += '</div></div>';
-        });
-        h += '<div style="font-size:10px;color:var(--mt);text-align:center;margin-top:10px">Showing last 60 workout days.</div>';
-      }
+      h += '<div class="sect">🧭 Workout Calendar</div>';
+      var calendar = buildWorkoutCalendar(30);
+      var workoutDays = calendar.cells.filter(function(c){ return !c.blank && c.hasWorkout; }).length;
+      h += '<div class="card card-elevated progress-calendar-card">';
+      h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '<div><div style="font-size:14px;font-weight:900">Last 30 Days</div><div class="home-meta">'+esc(fmtS(calendar.start))+' → '+esc(fmtS(calendar.end))+'</div></div>';
+      h += '<div class="progress-calendar-pill">'+workoutDays+' workout day'+(workoutDays===1?'':'s')+'</div>';
+      h += '</div>';
+      h += '<div class="progress-calendar-grid">';
+      ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(function(lbl){
+        h += '<div class="progress-calendar-dow">'+lbl+'</div>';
+      });
+      calendar.cells.forEach(function(cell){
+        if (cell.blank) {
+          h += '<div class="progress-calendar-cell blank"></div>';
+          return;
+        }
+        var cls = 'progress-calendar-cell' + (cell.hasWorkout ? ' has-workout' : '') + (cell.date === selDate ? ' selected' : '');
+        var title = fmtD(cell.date) + (cell.hasWorkout ? (' • Volume ' + (cell.volume || 0) + ' ' + weightUnitLabel()) : ' • No workout logged');
+        h += '<button class="'+cls+'" data-act="jump" data-date="'+cell.date+'" title="'+esc(title)+'">';
+        h += '<span class="day">'+cell.day+'</span>';
+        h += cell.hasWorkout ? '<span class="marker"></span>' : '<span class="marker marker-off"></span>';
+        h += '</button>';
+      });
+      h += '</div>';
+      h += '<div class="home-meta" style="margin-top:10px">Tap a highlighted day to open that session in Track.</div>';
+      h += '</div>';
     }
     if (view === "progress") {
       h += '<div class="sect">📈 Progress</div>';
@@ -3027,10 +3125,11 @@ var adherence = weeklyAdherence();
         var dayDate = addDays(weekStart, wd);
         var rid = RSCHED[String(dow)] || '';
         var rr = (RLIB || []).find(function(item){ return item.id === rid; });
+        var isRestDay = isRestScheduleValue(rid);
         var completed = (W[dayDate] || []).length > 0;
-        h += '<button class="plan-day'+(completed ? ' done' : '')+(planSelectedDow===dow ? ' selected' : '')+'" data-dow="'+dow+'">';
+        h += '<button class="plan-day'+(completed ? ' done' : '')+(isRestDay ? ' rest' : '')+(planSelectedDow===dow ? ' selected' : '')+'" data-dow="'+dow+'">';
         h += '<div class="plan-day-name">'+shortNames[wd]+'</div>';
-        h += '<div class="plan-day-routine">'+esc(rr ? rr.name : '—')+'</div>';
+        h += '<div class="plan-day-routine">'+esc(isRestDay ? 'Rest Day' : (rr ? rr.name : '—'))+'</div>';
         h += '</button>';
       }
       h += '</div>';
@@ -3097,7 +3196,12 @@ var adherence = weeklyAdherence();
       var lift = SOC.leaderboardLift || "Bench Press";
       var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
       var board = leaderboardRows(lift);
-        h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
+      h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      h += '<button class="btn bs social-jump" data-target="social-friends" style="padding:6px 10px;font-size:11px">Friends</button>';
+      h += '<button class="btn bs social-jump" data-target="social-leaderboard" style="padding:6px 10px;font-size:11px">Leaderboard</button>';
+      h += '<button class="btn bs social-jump" data-target="social-feed" style="padding:6px 10px;font-size:11px">Feed</button>';
+      h += '</div>';
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
       h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Build your profile, add real users by @handle, chat, and share workouts, meals, and PR updates.</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
       h += '<div class="meas-item"><div class="meas-val">'+socialMe.workouts+'</div><div class="meas-lbl">My workouts</div></div>';
@@ -3111,7 +3215,7 @@ h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="marg
       h += '<button class="btn bs" id="save-social-name" style="margin-top:8px;padding:8px 10px">Save profile</button>';
       h += '</div>';
 
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
+      h += '<div class="card" id="social-friends"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
 h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend request (real user via @handle)</div>';
        h += '<div class="row" style="gap:6px;margin-bottom:8px">';
       h += '<input class="inp" id="friend-handle" placeholder="@handle" style="flex:1">';
@@ -3146,8 +3250,9 @@ h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend 
       if ((SOC.friends || []).length) {
         (SOC.friends || []).forEach(function(fr, idx){
           h += '<div class="rec-item" style="margin-bottom:6px">';
-h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})["Bench Press"])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
+h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · '+(+fr.workouts||0)+' workouts · Bench '+(+((fr.lifts||{})["Bench Press"])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
           h += '<div class="row" style="gap:4px">';
+          h += '<button class="btn bs social-friend-open" data-id="'+esc(fr.id)+'" style="padding:5px 8px;font-size:10px">View</button>';
            h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
           h += '</div>';
                      h += '</div>';
@@ -3170,7 +3275,7 @@ h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var
       h += '<div style="font-size:10px;color:var(--mt)">Pick a friend to view recent messages.</div>';
       h += '</div></div>';
        
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
+      h += '<div class="card" id="social-leaderboard"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
       h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       liftChoices.forEach(function(l){
         h += '<button class="btn bs social-lift'+(lift===l?' on':'')+'" data-lift="'+esc(l)+'" style="padding:6px 10px;font-size:11px">'+esc(l)+'</button>';
@@ -3184,7 +3289,7 @@ h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var
       });
       h += '</div>';
 
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
+      h += '<div class="card" id="social-feed"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
 h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       h += '<button class="btn bs" id="share-social-summary" style="padding:8px 10px">Share profile</button>';
       h += '<button class="btn bs" id="share-workout-post" style="padding:8px 10px">Share workout</button>';
@@ -3873,7 +3978,7 @@ var newRoutineBtn = document.getElementById("new-routine-btn");
         document.querySelectorAll('.plan-day').forEach(function(el){
           el.classList.toggle('selected', parseInt(el.getAttribute('data-dow'), 10) === dow);
         });
-        var options = '<option value="">— None —</option>';
+        var options = '<option value="">— None —</option><option value="__REST__">Rest Day</option>';
         (RLIB || []).forEach(function(r){ options += '<option value="'+esc(r.id)+'">'+esc(r.name)+'</option>'; });
         showModal('<div style="padding:4px 2px"><div style="font-size:15px;font-weight:900;margin-bottom:10px">Assign routine</div>'+
           '<select class="inp" id="plan-day-select" style="width:100%;text-align:left">'+options+'</select>'+
@@ -4145,17 +4250,14 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
           }
           declineQuery.then(function(res){
             if (res && res.error) throw res.error;
-            return sb.from("friendships").delete().eq("user_id", fr.id).eq("friend_id", uid);
-          }).then(function(res2){
-            if (res2 && res2.error) throw res2.error;
             return loadSocialGraph();
           }).then(function(){ render(); }).catch(function(err){
-            alert((err && err.message) ? err.message : "Could not remove friend.");
+            alert((err && err.message) ? err.message : "Could not decline request.");
           });
           return;
         }
-        if (fr && SOC.messages) delete SOC.messages[fr.id]; 
-        SOC.friends.splice(i, 1);
+        if (rq && rq.user_id && SOC.messages) delete SOC.messages[rq.user_id];
+        SOC.requests.splice(i, 1);
         saveAll();
         render();
       };
@@ -4166,6 +4268,25 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
         SOC.leaderboardLift = this.getAttribute("data-lift") || "Bench Press";
         saveAll();
         render();
+      };
+    });
+
+    document.querySelectorAll(".social-jump").forEach(function(btn){
+      btn.onclick = function(){
+        var targetId = this.getAttribute("data-target") || "";
+        if (!targetId) return;
+        var node = document.getElementById(targetId);
+        if (node && typeof node.scrollIntoView === "function") {
+          node.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+    });
+
+    document.querySelectorAll(".social-friend-open").forEach(function(btn){
+      btn.onclick = function(){
+        var fid = this.getAttribute("data-id") || "";
+        if (!fid) return;
+        openFriendScoutModal(fid);
       };
     });
 
