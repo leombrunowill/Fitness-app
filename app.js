@@ -3696,9 +3696,7 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     };
 
     var homeWeightToggleBtn = document.getElementById("home-weight-toggle");
-      view = "profile";
-      saveAll();
-      render();
+         if (homeWeightToggleBtn) homeWeightToggleBtn.onclick = function(){
       homeWeightEntryOpen = !homeWeightEntryOpen;
       render();
     };
@@ -4453,8 +4451,8 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, DN_CACHE:DN_CACHE, NFOODS:NFOODS, USE
       saveAll();
       render();
     };
+  
   }
-
   document.querySelectorAll(".nb").forEach(function(btn){
     btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
   });
