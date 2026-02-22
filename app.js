@@ -7,6 +7,31 @@
 document.addEventListener("DOMContentLoaded", function () {
   "use strict";
 
+  function showFatalScreen(msg) {
+    var app = document.getElementById("app");
+    if (!app) return;
+    var safeMsg = String(msg || "Unexpected app error").replace(/[&<>\"']/g, function(ch){
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[ch] || ch;
+    });
+    app.innerHTML = '<div class="card" style="margin-top:10px;border:1px solid var(--rd)">'+
+      '<div style="font-size:14px;font-weight:900;margin-bottom:8px">Something went wrong</div>'+
+      '<div style="font-size:11px;color:var(--mt);margin-bottom:10px">'+safeMsg+'</div>'+
+      '<button class="btn bp" id="reload-app-btn" style="width:100%">Reload App</button>'+
+      '</div>';
+    var reloadBtn = document.getElementById("reload-app-btn");
+    if (reloadBtn) reloadBtn.onclick = function(){ location.reload(); };
+  }
+
+  window.addEventListener("error", function(e){
+    var m = (e && e.message) ? e.message : "Runtime error";
+    showFatalScreen(m);
+  });
+  window.addEventListener("unhandledrejection", function(e){
+    var r = e && e.reason;
+    var m = (r && r.message) ? r.message : String(r || "Unhandled promise rejection");
+    showFatalScreen(m);
+  });
+
   // -----------------------------
   // Storage helpers
   // -----------------------------
@@ -577,6 +602,66 @@ function getNextPlannedWorkoutSummary(fromDate) {
   return null;
 }
 
+function openFriendScoutModal(friendId) {
+  var fr = findSocialFriend(friendId);
+  if (!fr) return;
+  var lifts = fr.lifts || {};
+  var topLifts = Object.keys(lifts).map(function(k){ return { name: k, val: +lifts[k] || 0 }; }).sort(function(a,b){ return b.val - a.val; }).slice(0, 5);
+  var feedHits = (SOC.feed || []).filter(function(item){ return String(item.user_id || "") === String(fr.id); }).slice(0, 6);
+  var html = '<div style="padding:6px 2px">';
+  html += '<div style="font-size:16px;font-weight:900">'+esc(fr.name)+'</div>';
+  html += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">'+esc(fr.handle || '@athlete')+'</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px">';
+  html += '<div class="meas-item"><div class="meas-val">'+(+fr.workouts||0)+'</div><div class="meas-lbl">Workouts</div></div>';
+  html += '<div class="meas-item"><div class="meas-val">'+(+((lifts["Bench Press"])||0))+'</div><div class="meas-lbl">Bench</div></div>';
+  html += '<div class="meas-item"><div class="meas-val">'+(+((lifts.Squat)||0))+'</div><div class="meas-lbl">Squat</div></div>';
+  html += '</div>';
+  html += '<div style="font-size:12px;font-weight:800;margin-bottom:6px">Top PRs</div>';
+  if (!topLifts.length) {
+    html += '<div class="home-meta">No PRs shared yet.</div>';
+  } else {
+    topLifts.forEach(function(it){ html += '<div class="rec-item" style="margin-bottom:6px"><div>'+esc(it.name)+'</div><div style="font-weight:900">'+it.val+'</div></div>'; });
+  }
+  html += '<div style="font-size:12px;font-weight:800;margin:10px 0 6px">Recent feed</div>';
+  if (!feedHits.length) {
+    html += '<div class="home-meta">No recent shared updates.</div>';
+  } else {
+    feedHits.forEach(function(item){
+      html += '<div class="rec-item" style="margin-bottom:6px"><div style="font-size:10px;color:var(--mt)">'+esc(item.date || '')+'</div><div style="font-size:11px;margin-top:4px">'+esc(item.text || '')+'</div></div>';
+    });
+  }
+  html += '<button class="btn bs" id="friend-scout-close" style="width:100%;margin-top:10px">Done</button></div>';
+  showModal(html);
+  var closeBtn = document.getElementById("friend-scout-close");
+  if (closeBtn) closeBtn.onclick = closeModal;
+}
+
+function queueRender(delayMs) {
+  clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(render, delayMs || 70);
+}
+
+function showToast(msg) {
+  var wrap = document.getElementById("il-toast-wrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "il-toast-wrap";
+    wrap.className = "toast-wrap";
+    document.body.appendChild(wrap);
+  }
+  var t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  wrap.appendChild(t);
+  requestAnimationFrame(function(){ t.classList.add("show"); });
+  setTimeout(function(){
+    t.classList.remove("show");
+    setTimeout(function(){ if (t && t.parentNode) t.parentNode.removeChild(t); }, 220);
+  }, 2200);
+}
+   
+function canScanBarcode(){
+  return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
 function openBarcodeScanner(){
   if(!canScanBarcode()) return alert("Barcode scanning isn't supported on this Safari version.");
@@ -3111,7 +3196,12 @@ var adherence = weeklyAdherence();
       var lift = SOC.leaderboardLift || "Bench Press";
       var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
       var board = leaderboardRows(lift);
-        h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
+      h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      h += '<button class="btn bs social-jump" data-target="social-friends" style="padding:6px 10px;font-size:11px">Friends</button>';
+      h += '<button class="btn bs social-jump" data-target="social-leaderboard" style="padding:6px 10px;font-size:11px">Leaderboard</button>';
+      h += '<button class="btn bs social-jump" data-target="social-feed" style="padding:6px 10px;font-size:11px">Feed</button>';
+      h += '</div>';
+      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🤝 Social Hub</div>';
       h += '<div style="font-size:11px;color:var(--mt);margin-bottom:8px">Build your profile, add real users by @handle, chat, and share workouts, meals, and PR updates.</div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
       h += '<div class="meas-item"><div class="meas-val">'+socialMe.workouts+'</div><div class="meas-lbl">My workouts</div></div>';
@@ -3125,7 +3215,7 @@ h += '<textarea class="txta" id="social-bio" placeholder="Short bio" style="marg
       h += '<button class="btn bs" id="save-social-name" style="margin-top:8px;padding:8px 10px">Save profile</button>';
       h += '</div>';
 
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
+      h += '<div class="card" id="social-friends"><div style="font-size:13px;font-weight:900;margin-bottom:8px">👥 Friends</div>';
 h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend request (real user via @handle)</div>';
        h += '<div class="row" style="gap:6px;margin-bottom:8px">';
       h += '<input class="inp" id="friend-handle" placeholder="@handle" style="flex:1">';
@@ -3160,8 +3250,9 @@ h += '<div style="font-size:11px;font-weight:700;margin-bottom:4px">Send friend 
       if ((SOC.friends || []).length) {
         (SOC.friends || []).forEach(function(fr, idx){
           h += '<div class="rec-item" style="margin-bottom:6px">';
-h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · Bench '+(+((fr.lifts||{})["Bench Press"])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
+h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var(--mt)">'+esc(fr.handle || '')+' · '+(+fr.workouts||0)+' workouts · Bench '+(+((fr.lifts||{})["Bench Press"])||0)+' · Squat '+(+((fr.lifts||{}).Squat)||0)+' · Deadlift '+(+((fr.lifts||{}).Deadlift)||0)+'</div></div>';
           h += '<div class="row" style="gap:4px">';
+          h += '<button class="btn bs social-friend-open" data-id="'+esc(fr.id)+'" style="padding:5px 8px;font-size:10px">View</button>';
            h += '<button class="del social-rm" data-i="'+idx+'">×</button>';
           h += '</div>';
                      h += '</div>';
@@ -3184,7 +3275,7 @@ h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var
       h += '<div style="font-size:10px;color:var(--mt)">Pick a friend to view recent messages.</div>';
       h += '</div></div>';
        
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
+      h += '<div class="card" id="social-leaderboard"><div style="font-size:13px;font-weight:900;margin-bottom:8px">🏆 Leaderboard</div>';
       h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       liftChoices.forEach(function(l){
         h += '<button class="btn bs social-lift'+(lift===l?' on':'')+'" data-lift="'+esc(l)+'" style="padding:6px 10px;font-size:11px">'+esc(l)+'</button>';
@@ -3198,7 +3289,7 @@ h += '<div><strong>'+esc(fr.name)+'</strong><div style="font-size:10px;color:var
       });
       h += '</div>';
 
-      h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
+      h += '<div class="card" id="social-feed"><div style="font-size:13px;font-weight:900;margin-bottom:8px">📣 Shared Feed</div>';
 h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       h += '<button class="btn bs" id="share-social-summary" style="padding:8px 10px">Share profile</button>';
       h += '<button class="btn bs" id="share-workout-post" style="padding:8px 10px">Share workout</button>';
@@ -4161,17 +4252,14 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
           }
           declineQuery.then(function(res){
             if (res && res.error) throw res.error;
-            return sb.from("friendships").delete().eq("user_id", fr.id).eq("friend_id", uid);
-          }).then(function(res2){
-            if (res2 && res2.error) throw res2.error;
             return loadSocialGraph();
           }).then(function(){ render(); }).catch(function(err){
-            alert((err && err.message) ? err.message : "Could not remove friend.");
+            alert((err && err.message) ? err.message : "Could not decline request.");
           });
           return;
         }
-        if (fr && SOC.messages) delete SOC.messages[fr.id]; 
-        SOC.friends.splice(i, 1);
+        if (rq && rq.user_id && SOC.messages) delete SOC.messages[rq.user_id];
+        SOC.requests.splice(i, 1);
         saveAll();
         render();
       };
@@ -4182,6 +4270,25 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
         SOC.leaderboardLift = this.getAttribute("data-lift") || "Bench Press";
         saveAll();
         render();
+      };
+    });
+
+    document.querySelectorAll(".social-jump").forEach(function(btn){
+      btn.onclick = function(){
+        var targetId = this.getAttribute("data-target") || "";
+        if (!targetId) return;
+        var node = document.getElementById(targetId);
+        if (node && typeof node.scrollIntoView === "function") {
+          node.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+    });
+
+    document.querySelectorAll(".social-friend-open").forEach(function(btn){
+      btn.onclick = function(){
+        var fid = this.getAttribute("data-id") || "";
+        if (!fid) return;
+        openFriendScoutModal(fid);
       };
     });
 
