@@ -88,14 +88,17 @@
   // Dates
   // -----------------------------
   function pad2(n) { return String(n).padStart(2, "0"); }
+  function dateKeyFromDate(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
   function tod() {
     var d = new Date();
-    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+    return dateKeyFromDate(d);
   }
   function addDays(ds, delta) {
     var d = new Date(ds + "T00:00:00");
     d.setDate(d.getDate() + delta);
-    return d.toISOString().slice(0, 10);
+    return dateKeyFromDate(d);
   }
   function fmtD(ds) {
     var d = new Date(ds + "T00:00:00");
@@ -343,7 +346,7 @@ function lastNDates(n){
   var out=[], d=new Date();
   for(var i=0;i<n;i++){
     var x=new Date(d); x.setDate(d.getDate()-i);
-    out.push(x.toISOString().split("T")[0]);
+    out.push(dateKeyFromDate(x));
   }
   return out;
 }
@@ -477,7 +480,7 @@ function getWeekWindowStart() {
   var day = base.getDay();
   var mondayDelta = day === 0 ? -6 : (1 - day);
   base.setDate(base.getDate() + mondayDelta);
-  return base.toISOString().slice(0, 10);
+  return dateKeyFromDate(base);
 }
 
 function getPlannedCompletedForWeek() {
@@ -4584,9 +4587,11 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       if (!isNaN(sess)) USER.sessionsPerWeek = Math.max(0, Math.min(14, sess));
       if (!isNaN(steps)) USER.stepsPerDay = Math.max(0, Math.min(30000, steps));
       USER.goalMode = ((document.getElementById("set-goal")||{}).value || "cut");
+      USER.goal_type = USER.goalMode;
       USER.goalPace = ((document.getElementById("set-goal-pace")||{}).value || "moderate");
       USER.cutAggressiveness = USER.goalPace;
       USER.manualModeOverride = ((document.getElementById("set-mode-override")||{}).value || "auto");
+      USER = normalizeUSER(USER);
        saveAll();
       alert("Saved!");
       render();
