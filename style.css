@@ -1,8 +1,8 @@
-:root{--bg:#030712;--c1:#111827;--c2:#1f2937;--c3:#374151;--tx:#f9fafb;--mt:#6b7280;--bl:#3b82f6;--pu:#a855f7;--pk:#ec4899;--gn:#22c55e;--rd:#ef4444;--yl:#facc15;--cy:#22d3ee;--or:#fb923c;--space-1:8px;--space-2:12px;--space-3:16px;--space-4:24px;--text-title:14px;--text-meta:11px}
+:root{--bg:#05070d;--c1:#0f141f;--c2:#1a2433;--c3:#334155;--tx:#f8fafc;--mt:#8a93a4;--bl:#5aa9ff;--pu:#8b5cf6;--pk:#f43f5e;--gn:#22c55e;--rd:#ef4444;--yl:#facc15;--cy:#22d3ee;--or:#fb923c;--iron:#ff5d2a;--steel:#7dd3fc;--space-1:8px;--space-2:12px;--space-3:16px;--space-4:24px;--text-title:14px;--text-meta:11px}
 [data-theme="light"]{--bg:#f3f4f6;--c1:#fff;--c2:#e5e7eb;--c3:#9ca3af;--tx:#111827;--mt:#6b7280}
 *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100dvh;-webkit-tap-highlight-color:transparent;padding-bottom:68px;transition:.3s}
 button{font-family:inherit;cursor:pointer}input,textarea{font-family:inherit}input[type=number]{-moz-appearance:textfield}input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none}
-.hdr{background:var(--c1);border-bottom:1px solid var(--c2);padding:10px 16px;position:sticky;top:0;z-index:40}.hdr-in{max-width:520px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}.logo{font-size:22px;font-weight:800;background:linear-gradient(to right,#60a5fa,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.thm{
+.hdr{background:linear-gradient(160deg, rgba(15,20,31,.95), rgba(10,15,24,.9));border-bottom:1px solid rgba(125,211,252,.22);padding:10px 16px;position:sticky;top:0;z-index:40;backdrop-filter:blur(8px)}.hdr-in{max-width:520px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}.logo{font-size:22px;font-weight:900;letter-spacing:.04em}.hardcore-logo{display:flex;align-items:center;gap:8px}.logo-mark{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;background:linear-gradient(145deg,var(--iron),#fb7185);color:#fff;box-shadow:0 0 0 1px rgba(255,255,255,.2) inset,0 6px 20px rgba(244,63,94,.35)}.logo-word{background:linear-gradient(90deg,var(--steel),#c4b5fd,var(--iron));-webkit-background-clip:text;-webkit-text-fill-color:transparent}.thm{
   border:1px solid var(--c2);
   background:var(--c2);
   border-radius:12px;
@@ -473,3 +473,8 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .skeleton::before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.2) 45%,transparent 60%);animation:skel 1.1s linear infinite}
 @keyframes skel{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 
+
+.workout-summary-card{background:linear-gradient(150deg,rgba(90,169,255,.16),rgba(244,63,94,.1));border-color:rgba(125,211,252,.35)}
+.set-complete{touch-action:pan-y;position:relative;overflow:hidden}
+.set-complete::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(125,211,252,.25),transparent);transition:transform .28s ease}
+.set-complete:active::after{transform:translateX(100%)}

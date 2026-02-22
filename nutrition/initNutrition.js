@@ -26,7 +26,15 @@
         }
         // Fallback: write directly to localStorage
         try {
-          var selDate = localStorage.getItem("il_selDate") || new Date().toISOString().slice(0, 10);
+          var rawSelDate = localStorage.getItem("il_selDate");
+          var selDate = new Date().toISOString().slice(0, 10);
+          if (rawSelDate) {
+            try {
+              selDate = JSON.parse(rawSelDate) || selDate;
+            } catch (e1) {
+              selDate = String(rawSelDate || "").replace(/(^"|"$)/g, "") || selDate;
+            }
+          }
           var nlog    = JSON.parse(localStorage.getItem("il_nlog") || "{}");
           if (!nlog[selDate]) nlog[selDate] = [];
           nlog[selDate].push(logEntry);
