@@ -790,13 +790,20 @@ var cloudSyncEnabled = true;
   var cloudSaveTimer = null;
      var socialProfileSaveTimer = null;
   var cloudHydrating = false;
+   var authInitAttempts = 0;
    
   function initAuth() {
     if (!window.supabase) {
+       authInitAttempts += 1;
+      if (authInitAttempts <= 20) {
+        setTimeout(initAuth, 250);
+        return;
+      }
       authMsg = "Supabase SDK not loaded.";
       authReady = true;
       return;
     }
+     authInitAttempts = 0;
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       authMsg = "Set window.IRONLOG_SUPABASE_URL and window.IRONLOG_SUPABASE_ANON_KEY to enable auth.";
       authReady = true;
