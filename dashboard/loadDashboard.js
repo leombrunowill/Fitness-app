@@ -60,15 +60,19 @@ function analyticsFromRemote(remote, fallback, weekStartIso) {
 
   setsInWindow.forEach((st) => {
     const exId = st.exercise_id || st.exerciseId;
-    const info = exById[String(exId)];
-    if (info && info.muscle) muscleVolumes[info.muscle] += 1;
+    const info = exById[String(exId)] || null;
 
-    if (info && info.exercise) {
-      const reps = +(st.reps || st.r || 0);
-      const weight = +(st.weight || st.w || 0);
-      const score = reps * weight;
-      if (!volumeByExercise[info.exercise]) volumeByExercise[info.exercise] = [];
-      volumeByExercise[info.exercise].push(score);
+    const directMuscle = map[normalizeName(st.muscle_group)];
+    const muscle = (info && info.muscle) || directMuscle;
+    if (muscle) muscleVolumes[muscle] += 1;
+
+    const reps = +(st.reps || st.r || 0);
+    const weight = +(st.weight || st.w || 0);
+    const score = reps * weight;
+    const exerciseLabel = (info && info.exercise) || (st.exercise_id ? `Exercise ${st.exercise_id}` : null);
+    if (exerciseLabel) {
+      if (!volumeByExercise[exerciseLabel]) volumeByExercise[exerciseLabel] = [];
+      volumeByExercise[exerciseLabel].push(score);
     }
   });
 
@@ -148,13 +152,22 @@ export async function initDashboard(ctx) {
   if (profileForm) {
     profileForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const submitBtn = profileForm.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
       const fd = new FormData(profileForm);
-      await upsertProfileSetup({
+      const result = await upsertProfileSetup({
         training_goal: fd.get('goal'),
         experience_level: fd.get('experience'),
         weekly_training_days: Number(fd.get('days') || 0),
         bodyweight_goal: Number(fd.get('goal_weight') || 0)
       });
+      if (submitBtn) submitBtn.disabled = false;
+
+      if (result && result.error) {
+        alert(`Unable to save profile: ${result.error.message || 'unknown error'}`);
+        return;
+      }
+
       ctx.onProfileSaved && ctx.onProfileSaved(fd);
     });
   }
