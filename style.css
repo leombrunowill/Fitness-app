@@ -371,3 +371,62 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .ni-ring-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size: 18px; font-weight: 900; }
 @keyframes niFade { from { opacity: .2; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
 @keyframes niSpin { from { transform: rotate(-65deg); opacity: .4; } to { transform: rotate(0deg); opacity: 1; } }
+
+/* === Phase 1 UI System: Hardcore Minimal Luxury === */
+:root{
+  --bg-primary:#020303;
+  --bg-secondary:#0d1117;
+  --bg-tertiary:#131a23;
+  --surface-glass:rgba(22,28,37,.72);
+  --accent:#d8ff3f;
+  --accent-2:#79a9ff;
+  --text-primary:#f8fafc;
+  --text-secondary:#8b95a7;
+  --border-hairline:rgba(255,255,255,.09);
+  --radius-card:18px;
+  --radius-compact:16px;
+  --space-1:8px;
+  --space-2:16px;
+  --space-3:24px;
+}
+.app-body{background:radial-gradient(circle at 20% -10%, #1a2232 0%, var(--bg-primary) 35%, #010101 100%);color:var(--text-primary);}
+.app-shell{min-height:100dvh;}
+.container,.ctn{width:min(100%,560px);margin:0 auto;padding:12px 14px 110px;}
+.card{background:linear-gradient(160deg,rgba(255,255,255,.03),rgba(255,255,255,.01));border:1px solid var(--border-hairline);border-radius:var(--radius-card);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 12px 40px rgba(0,0,0,.38);backdrop-filter:blur(12px);}
+.card-elevated{background:linear-gradient(160deg,rgba(216,255,63,.08),rgba(121,169,255,.04));}
+.card-compact{padding:12px 14px;border-radius:var(--radius-compact);}
+.section-title{font-size:clamp(1.6rem,5vw,2rem);letter-spacing:-.03em;font-weight:800;line-height:1.1;}
+.display-metric{font-size:clamp(1.5rem,6vw,2.2rem);font-weight:800;letter-spacing:-.03em;}
+.label-small{font-size:.68rem;text-transform:uppercase;letter-spacing:.11em;color:var(--text-secondary);font-weight:700;}
+.input-large{height:52px;font-size:1.25rem;font-weight:700;}
+.mono-number,.ttime,.inp{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+
+.top-nav{background:rgba(2,4,7,.72);backdrop-filter:blur(20px);border-bottom:1px solid var(--border-hairline);}
+.bottom-tab-bar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 10px);padding:8px;background:rgba(9,12,18,.7);backdrop-filter:blur(22px);border:1px solid var(--border-hairline);border-radius:22px;box-shadow:0 14px 44px rgba(0,0,0,.5);display:flex;gap:2px;z-index:50;}
+.nb{border-radius:14px;padding:8px 4px;transition:transform .2s,background .25s,color .25s;}
+.nb .tab-label{font-size:10px;line-height:1.1;}
+.nb.on{color:var(--accent);background:rgba(216,255,63,.08);text-shadow:0 0 14px rgba(216,255,63,.35);}
+.nb.on .ni{transform:translateY(-1px) scale(1.05);}
+.nb.is-pressed,.btn.is-pressed{transform:scale(.96);}
+
+.dashboard-page{display:grid;gap:12px;}
+.dashboard-hero{padding:4px 2px 0;}
+.ring-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.progress-ring-card{background:var(--surface-glass);border:1px solid var(--border-hairline);border-radius:18px;padding:10px;display:grid;place-items:center;gap:4px;}
+.progress-ring{width:74px;height:74px;transform:rotate(-90deg);}
+.ring-track{fill:none;stroke:rgba(255,255,255,.12);stroke-width:12;}
+.ring-value{fill:none;stroke-linecap:round;stroke-width:12;transition:stroke-dasharray .5s var(--ease-out, cubic-bezier(0.22,1,0.36,1));}
+.metric-card{padding:14px;}
+.dashboard-stack{display:grid;gap:10px;}
+
+.focus-item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08);}
+.focus-item.top{border-top:none;padding-top:0;}
+.focus-routine-pill{display:inline-flex;border:1px solid rgba(216,255,63,.35);background:rgba(216,255,63,.08);padding:4px 10px;border-radius:999px;font-size:11px;margin-bottom:8px;}
+
+.dashboard-stagger{opacity:0;transform:translateY(10px) scale(.99);}
+.dashboard-stagger.stagger-in{animation:riseIn .48s cubic-bezier(0.22,1,0.36,1) forwards;}
+@keyframes riseIn{to{opacity:1;transform:translateY(0) scale(1);}}
+.value-pulse{animation:valuePulse .35s ease-out;}
+@keyframes valuePulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+
+@media (max-width:380px){.ring-grid{grid-template-columns:1fr;}}
