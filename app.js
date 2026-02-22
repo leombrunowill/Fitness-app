@@ -577,32 +577,6 @@ function getNextPlannedWorkoutSummary(fromDate) {
   return null;
 }
 
-function queueRender(delayMs) {
-  clearTimeout(renderDebounceTimer);
-  renderDebounceTimer = setTimeout(render, delayMs || 70);
-}
-
-function showToast(msg) {
-  var wrap = document.getElementById("il-toast-wrap");
-  if (!wrap) {
-    wrap = document.createElement("div");
-    wrap.id = "il-toast-wrap";
-    wrap.className = "toast-wrap";
-    document.body.appendChild(wrap);
-  }
-  var t = document.createElement("div");
-  t.className = "toast";
-  t.textContent = msg;
-  wrap.appendChild(t);
-  requestAnimationFrame(function(){ t.classList.add("show"); });
-  setTimeout(function(){
-    t.classList.remove("show");
-    setTimeout(function(){ if (t && t.parentNode) t.parentNode.removeChild(t); }, 220);
-  }, 2200);
-}
-   
-function canScanBarcode(){
-  return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
 function openBarcodeScanner(){
   if(!canScanBarcode()) return alert("Barcode scanning isn't supported on this Safari version.");
@@ -3631,7 +3605,9 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     };
 
     var homeWeightToggleBtn = document.getElementById("home-weight-toggle");
-    if (homeWeightToggleBtn) homeWeightToggleBtn.onclick = function(){
+      view = "profile";
+      saveAll();
+      render();
       homeWeightEntryOpen = !homeWeightEntryOpen;
       render();
     };
