@@ -3696,7 +3696,9 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     };
 
     var homeWeightToggleBtn = document.getElementById("home-weight-toggle");
-    if (homeWeightToggleBtn) homeWeightToggleBtn.onclick = function(){
+      view = "profile";
+      saveAll();
+      render();
       homeWeightEntryOpen = !homeWeightEntryOpen;
       render();
     };
