@@ -759,6 +759,7 @@ function openBarcodeScanner(){
     if(f) f.addEventListener("click", function(){ facing = (facing==="environment"?"user":"environment"); scanning=true; start(); });
     start();
   },30);
+   }
 
   // Quick add list (NO olive oil)
   var QUICK_FOODS = [
