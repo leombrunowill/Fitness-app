@@ -27,15 +27,19 @@
   function dashboard(data){
     var focus = data.focusHtml || '<div class="home-meta">No focus items yet.</div>';
     return '<section class="dashboard-page">' +
-      topNav(data.headline, data.greeting) +
+      topNav(data.greeting, data.headline) +
+      '<section class="card card-elevated dashboard-stagger dashboard-focus">' +
+        '<p class="label-small">Today\'s Focus</p>' +
+        '<p class="display-metric">' + data.focusTitle + '</p>' +
+        '<p class="home-meta">' + data.focusMeta + '</p>' +
+        '<div class="dashboard-focus-body">' + focus + '</div>' +
+      '</section>' +
       '<section class="ring-grid">' +
         progressRing({id:'a',label:'Adherence',value:data.adherence + '%',percent:data.adherence}) +
         progressRing({id:'b',label:'Calories',value:data.calories + ' kcal',percent:data.caloriePct}) +
         progressRing({id:'c',label:'Protein',value:data.protein + ' g',percent:data.proteinPct}) +
       '</section>' +
-      '<section class="dashboard-stack">' +
-        metricCard({label:'Today\'s Focus', value:data.focusTitle, meta:data.focusMeta}) +
-        '<article class="card card-compact dashboard-stagger">' + focus + '</article>' +
+      '<section class="dashboard-duo">' +
         metricCard({label:'Bodyweight Trend', value:data.weightValue, meta:data.weightMeta}) +
         metricCard({label:'Momentum', value:data.momentumValue, meta:data.momentumMeta}) +
       '</section>' +

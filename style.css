@@ -432,6 +432,11 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .metric-card{padding:14px;}
 .dashboard-stack{display:grid;gap:10px;}
 
+.dashboard-duo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.dashboard-focus{padding:14px;}
+.dashboard-focus .display-metric{font-size:clamp(1.2rem,4.8vw,1.8rem);}
+.dashboard-focus-body{margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);}
+
 .focus-item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08);}
 .focus-item.top{border-top:none;padding-top:0;}
 .focus-routine-pill{display:inline-flex;border:1px solid rgba(216,255,63,.35);background:rgba(216,255,63,.08);padding:4px 10px;border-radius:999px;font-size:11px;margin-bottom:8px;}
@@ -442,6 +447,7 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .value-pulse{animation:valuePulse .35s ease-out;}
 @keyframes valuePulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
 
+@media (max-width:560px){.dashboard-duo{grid-template-columns:1fr;}}
 @media (max-width:380px){.ring-grid{grid-template-columns:1fr;}}
 
 /* === Phase 2: Workout + Nutrition premium interaction layer === */
