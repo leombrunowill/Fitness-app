@@ -842,6 +842,7 @@ var cloudSyncEnabled = true;
   var cloudSaveTimer = null;
      var socialProfileSaveTimer = null;
   var cloudHydrating = false;
+  var stateUpdatedAt = ld("il_state_updated_at", 0) || 0;
    var authInitAttempts = 0;
    
   function initAuth() {
@@ -1114,6 +1115,8 @@ function normalizeWeightUnit(unit) {
     return u === "ounces" ? "oz" : (u === "bottles" ? "bottle(s)" : "g");
   }
   function saveAll() {
+    var nowIso = new Date().toISOString();
+    stateUpdatedAt = Date.parse(nowIso) || Date.now();
          refreshDailyNutritionCache(selDate);
     sv("il_th", TH);
     sv("il_view", view);
@@ -1133,6 +1136,7 @@ function normalizeWeightUnit(unit) {
     sv("il_nupc", NUPC);
     sv("il_user", USER);
      sv("il_social", SOC);
+    sv("il_state_updated_at", stateUpdatedAt);
      if (authSession && authSession.user) {
       scheduleCloudUpsert();
               scheduleSocialProfileUpsert();
@@ -1154,7 +1158,7 @@ function normalizeWeightUnit(unit) {
       soc: SOC || {},
       rlib: RLIB || [],
       rsched: RSCHED || {},
-      updated_at: new Date().toISOString()
+      updated_at: (isFinite(stateUpdatedAt) && stateUpdatedAt > 0) ? new Date(stateUpdatedAt).toISOString() : new Date().toISOString()
     };
   }
 
@@ -1169,8 +1173,10 @@ function normalizeWeightUnit(unit) {
       WFIN = row.wfin || {};
              DN_CACHE = row.ncache || {};
       NFOODS = row.nfoods || {};
-      USER = normalizeUSER(row.user_settings || {});
+      var incomingUser = (row.user_settings && typeof row.user_settings === "object") ? row.user_settings : null;
+      USER = normalizeUSER(incomingUser && Object.keys(incomingUser).length ? incomingUser : USER);
       TH = row.th || "dark";
+      stateUpdatedAt = Date.parse(row.updated_at || "") || stateUpdatedAt;
       SOC = normalizeSOC(row.soc || {});
       RLIB = Array.isArray(row.rlib) ? row.rlib : [];
       RSCHED = row.rsched || {};
@@ -1231,8 +1237,13 @@ function normalizeWeightUnit(unit) {
       .then(function(res) {
         if (res && res.error) throw res.error;
         if (res && res.data) {
-          applyCloudState(res.data);
-          return;
+          var remoteTs = Date.parse(res.data.updated_at || "") || 0;
+          var localTs = isFinite(stateUpdatedAt) ? stateUpdatedAt : 0;
+          if (remoteTs > localTs) {
+            applyCloudState(res.data);
+            return;
+          }
+          return cloudUpsertNow();
         }
         return cloudUpsertNow();
       })
@@ -1299,7 +1310,7 @@ var cols = ["id", "display_name"];
     var payload = {
      id: uid,
       display_name: display,
-      updated_at: new Date().toISOString()
+      updated_at: (isFinite(stateUpdatedAt) && stateUpdatedAt > 0) ? new Date(stateUpdatedAt).toISOString() : new Date().toISOString()
 };
     if (socialSupportsHandle) payload.handle = handle || null;
     if (socialSupportsBio) payload.bio = bio || null;
@@ -4593,6 +4604,9 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       USER.manualModeOverride = ((document.getElementById("set-mode-override")||{}).value || "auto");
       USER = normalizeUSER(USER);
        saveAll();
+      if (isSignedIn()) {
+        cloudUpsertNow();
+      }
       alert("Saved!");
       render();
     };
