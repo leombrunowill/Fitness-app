@@ -88,14 +88,17 @@
   // Dates
   // -----------------------------
   function pad2(n) { return String(n).padStart(2, "0"); }
+  function dateKeyFromDate(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
   function tod() {
     var d = new Date();
-    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+    return dateKeyFromDate(d);
   }
   function addDays(ds, delta) {
     var d = new Date(ds + "T00:00:00");
     d.setDate(d.getDate() + delta);
-    return d.toISOString().slice(0, 10);
+    return dateKeyFromDate(d);
   }
   function fmtD(ds) {
     var d = new Date(ds + "T00:00:00");
@@ -343,7 +346,7 @@ function lastNDates(n){
   var out=[], d=new Date();
   for(var i=0;i<n;i++){
     var x=new Date(d); x.setDate(d.getDate()-i);
-    out.push(x.toISOString().split("T")[0]);
+    out.push(dateKeyFromDate(x));
   }
   return out;
 }
@@ -477,7 +480,7 @@ function getWeekWindowStart() {
   var day = base.getDay();
   var mondayDelta = day === 0 ? -6 : (1 - day);
   base.setDate(base.getDate() + mondayDelta);
-  return base.toISOString().slice(0, 10);
+  return dateKeyFromDate(base);
 }
 
 function getPlannedCompletedForWeek() {
@@ -839,6 +842,7 @@ var cloudSyncEnabled = true;
   var cloudSaveTimer = null;
      var socialProfileSaveTimer = null;
   var cloudHydrating = false;
+  var stateUpdatedAt = ld("il_state_updated_at", 0) || 0;
    var authInitAttempts = 0;
    
   function initAuth() {
@@ -1111,6 +1115,8 @@ function normalizeWeightUnit(unit) {
     return u === "ounces" ? "oz" : (u === "bottles" ? "bottle(s)" : "g");
   }
   function saveAll() {
+    var nowIso = new Date().toISOString();
+    stateUpdatedAt = Date.parse(nowIso) || Date.now();
          refreshDailyNutritionCache(selDate);
     sv("il_th", TH);
     sv("il_view", view);
@@ -1130,6 +1136,7 @@ function normalizeWeightUnit(unit) {
     sv("il_nupc", NUPC);
     sv("il_user", USER);
      sv("il_social", SOC);
+    sv("il_state_updated_at", stateUpdatedAt);
      if (authSession && authSession.user) {
       scheduleCloudUpsert();
               scheduleSocialProfileUpsert();
@@ -1151,7 +1158,7 @@ function normalizeWeightUnit(unit) {
       soc: SOC || {},
       rlib: RLIB || [],
       rsched: RSCHED || {},
-      updated_at: new Date().toISOString()
+      updated_at: (isFinite(stateUpdatedAt) && stateUpdatedAt > 0) ? new Date(stateUpdatedAt).toISOString() : new Date().toISOString()
     };
   }
 
@@ -1166,8 +1173,10 @@ function normalizeWeightUnit(unit) {
       WFIN = row.wfin || {};
              DN_CACHE = row.ncache || {};
       NFOODS = row.nfoods || {};
-      USER = normalizeUSER(row.user_settings || {});
+      var incomingUser = (row.user_settings && typeof row.user_settings === "object") ? row.user_settings : null;
+      USER = normalizeUSER(incomingUser && Object.keys(incomingUser).length ? incomingUser : USER);
       TH = row.th || "dark";
+      stateUpdatedAt = Date.parse(row.updated_at || "") || stateUpdatedAt;
       SOC = normalizeSOC(row.soc || {});
       RLIB = Array.isArray(row.rlib) ? row.rlib : [];
       RSCHED = row.rsched || {};
@@ -1228,8 +1237,13 @@ function normalizeWeightUnit(unit) {
       .then(function(res) {
         if (res && res.error) throw res.error;
         if (res && res.data) {
-          applyCloudState(res.data);
-          return;
+          var remoteTs = Date.parse(res.data.updated_at || "") || 0;
+          var localTs = isFinite(stateUpdatedAt) ? stateUpdatedAt : 0;
+          if (remoteTs > localTs) {
+            applyCloudState(res.data);
+            return;
+          }
+          return cloudUpsertNow();
         }
         return cloudUpsertNow();
       })
@@ -1296,7 +1310,7 @@ var cols = ["id", "display_name"];
     var payload = {
      id: uid,
       display_name: display,
-      updated_at: new Date().toISOString()
+      updated_at: (isFinite(stateUpdatedAt) && stateUpdatedAt > 0) ? new Date(stateUpdatedAt).toISOString() : new Date().toISOString()
 };
     if (socialSupportsHandle) payload.handle = handle || null;
     if (socialSupportsBio) payload.bio = bio || null;
@@ -4584,10 +4598,15 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       if (!isNaN(sess)) USER.sessionsPerWeek = Math.max(0, Math.min(14, sess));
       if (!isNaN(steps)) USER.stepsPerDay = Math.max(0, Math.min(30000, steps));
       USER.goalMode = ((document.getElementById("set-goal")||{}).value || "cut");
+      USER.goal_type = USER.goalMode;
       USER.goalPace = ((document.getElementById("set-goal-pace")||{}).value || "moderate");
       USER.cutAggressiveness = USER.goalPace;
       USER.manualModeOverride = ((document.getElementById("set-mode-override")||{}).value || "auto");
+      USER = normalizeUSER(USER);
        saveAll();
+      if (isSignedIn()) {
+        cloudUpsertNow();
+      }
       alert("Saved!");
       render();
     };
