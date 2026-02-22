@@ -2611,95 +2611,63 @@ if (view === "home") {
       var homeDay = dayNutrition(selDate);
       var homeTotals = homeDay.totals;
       var homeGoals = calcAutoGoals();
-    var weightInfo = getRecentWeightTrendInfo();
-      var todayWeight = BW[selDate] ? (+BW[selDate] || 0) : weightInfo.today;
+      var weightInfo = getRecentWeightTrendInfo();
+   var todayWeight = BW[selDate] ? (+BW[selDate] || 0) : weightInfo.today;
       var focusData = buildTodayFocusData();
       var todayFocusItems = (focusData.items || []).slice(0, 2);
-      var snapshotItems = getVolumeSnapshot(3);
       var lastWorkout = getLastWorkoutSummary();
       var homeCalRemaining = Math.max(0, (homeGoals.cal || 0) - (homeTotals.cal || 0));
       var homeProteinRemaining = Math.max(0, (homeGoals.p || 0) - Math.round(homeTotals.p || 0));
-      h += '<div id="dashboard-v2"></div>';
-      h += '<div class="card home-stack-card" style="margin-top:8px">';
-   h += '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">';
-      h += '<div class="home-card-title">📌 Weekly Adherence</div>';
-   h += '<div style="font-size:14px;font-weight:900;color:var(--gn)">'+adhPct+'%</div>';
-      h += '</div>';
- h += '<div class="home-meta">Workouts: <strong style="color:var(--tx)">'+adh.workouts+'/'+adh.plan+'</strong> · '+volMsg+'</div>';
-      if (lastWorkout) h += '<button class="last-workout-link" data-act="jump" data-date="'+lastWorkout.date+'">Last workout: '+esc(lastWorkout.name)+' • '+esc(fmtS(lastWorkout.date))+'</button>';
-      else h += '<div class="home-meta" style="margin-top:8px">Last workout: —</div>';
-   h += '</div>';
+     var caloriePct = homeGoals.cal ? Math.round((homeTotals.cal / homeGoals.cal) * 100) : 0;
+      var proteinPct = homeGoals.p ? Math.round((homeTotals.p / homeGoals.p) * 100) : 0;
 
-      h += '<div class="card home-stack-card">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center;gap:10px">';
-      h += '<div class="home-card-title">🎯 Today&#39;s Focus</div>';
-      h += '<button class="home-view-all" id="home-focus-viewall">View all</button>';
-      h += '</div>';
-      if (focusData.routine) h += '<div class="focus-routine-pill">Today: '+esc(focusData.routine.name)+'</div>';
+      var focusHtml = '';
+      if (focusData.routine) focusHtml += '<div class="focus-routine-pill">Today: '+esc(focusData.routine.name)+'</div>';
       if (todayFocusItems.length) {
         todayFocusItems.forEach(function(item, idx){
-          h += '<div class="focus-item'+(idx === 0 ? ' top' : '')+'">';
-          h += '<div><div style="font-size:12px;font-weight:800">'+esc(item.group)+'</div>';
-          h += '<div class="home-meta">'+item.current+'/'+item.target+' weekly sets</div><div class="home-meta">Add '+item.deficit+' sets this week</div></div>';
-          h += '<button class="btn bp home-focus-action" data-group="'+esc(item.group)+'" data-sets="'+item.sets+'" style="padding:6px 10px;font-size:10px">Add to today&#39;s workout</button>';
-          h += '</div>';
+          focusHtml += '<div class="focus-item'+(idx === 0 ? ' top' : '')+'">';
+          focusHtml += '<div><div style="font-size:12px;font-weight:800">'+esc(item.group)+'</div>';
+          focusHtml += '<div class="home-meta mono-number">'+item.current+'/'+item.target+' weekly sets</div><div class="home-meta">Add '+item.deficit+' sets this week</div></div>';
+          focusHtml += '<button class="btn bp home-focus-action" data-group="'+esc(item.group)+'" data-sets="'+item.sets+'">Add Sets</button>';
+          focusHtml += '</div>';
         });
       } else {
-        h += '<div class="empty-state"><div class="empty-icon">✅</div><div><div class="empty-title">Great coverage this week</div><div class="empty-meta">No urgent muscle-group gaps right now.</div></div></div>';
+focusHtml += '<div class="empty-state"><div class="empty-icon">✅</div><div><div class="empty-title">Great coverage this week</div><div class="empty-meta">No urgent muscle-group gaps right now.</div></div></div>';
       }
-      h += '</div>';
-
-      h += '<div class="card home-stack-card">';
-      h += '<div class="home-card-title" style="margin-bottom:10px">📉 Recovery Snapshot</div>';
-      if (snapshotItems.length) {
-        snapshotItems.forEach(function(item){
-          var pct = Math.max(4, Math.min(100, Math.round((item.current / item.target) * 100)));
-          h += '<div class="snap-row">';
-          h += '<div style="font-size:11px;font-weight:700;width:62px">'+esc(item.group)+'</div>';
-          h += '<div class="snap-bar"><span class="snap-fill" style="width:'+pct+'%"></span></div>';
-          h += '<div class="home-meta" style="font-size:10px">'+item.current+'/'+item.target+'</div>';
-          h += '</div>';
-        });
-      } else {
-        h += '<div class="empty-state"><div class="empty-icon">📊</div><div><div class="empty-title">Snapshot unavailable</div><div class="empty-meta">Add workouts to populate weekly volume.</div></div></div>';
-      }
-      h += '</div>';
-
-      h += '<div class="card home-stack-card">';
-      h += '<div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">';
-      h += '<div><div class="home-meta" style="text-transform:uppercase;font-weight:700;letter-spacing:.06em">Today&#39;s Weight</div>';
-      h += todayWeight ? '<div style="font-size:26px;font-weight:900;color:var(--pk);margin-top:4px">'+toDisplayWeight(todayWeight)+' '+weightUnitLabel()+'</div>' : '<div class="home-meta" style="margin-top:6px">No weigh-in yet</div>';
-      if (weightInfo.deltaWeek !== null) {
-        var trendSign = weightInfo.deltaWeek > 0 ? '+' : '';
-        h += '<div class="home-meta" style="margin-top:6px">'+trendSign+toDisplayWeight(weightInfo.deltaWeek)+' '+weightUnitLabel()+' this week</div>';
-      } else if (weightInfo.avg7 !== null) {
-        h += '<div class="home-meta" style="margin-top:6px">7-day avg: '+toDisplayWeight(weightInfo.avg7)+' '+weightUnitLabel()+'</div>';
-      }
-      h += '</div>';
-      h += '<button class="btn bs" id="home-weight-toggle" style="padding:8px 12px">'+(homeWeightEntryOpen ? 'Close' : 'Log weight')+'</button>';
-      h += '</div>';
+       focusHtml += '<div class="row" style="gap:8px;margin-top:10px">';
+      focusHtml += '<button class="btn bs" id="home-log-food" style="flex:1">Log Food</button>';
+      focusHtml += '<button class="btn bp" id="home-start-workout" style="flex:1">'+(((W[selDate]||[]).length ? 'Continue Workout' : 'Start Workout'))+'</button>';
+      focusHtml += '</div>';
+      focusHtml += '<div class="row" style="gap:8px;margin-top:8px">';
+      focusHtml += '<button class="btn bs" id="home-focus-viewall" style="flex:1">View All Focus</button>';
+      focusHtml += '<button class="btn bs" id="home-weight-toggle" style="flex:1">'+(homeWeightEntryOpen ? 'Close Weight' : 'Log Weight')+'</button>';
+      focusHtml += '</div>';
       if (homeWeightEntryOpen) {
-        h += '<div class="row" style="gap:8px;margin-top:10px">';
-        h += '<input type="number" class="inp" id="bw-inp" style="flex:1" placeholder="'+weightUnitLabel()+'" value="'+(BW[selDate] ? toDisplayWeight(BW[selDate]) : '')+'">';
-        h += '<button class="btn bp" id="bw-btn" style="padding:8px 14px">Save</button>';
-        h += '</div>';
+         focusHtml += '<div class="row" style="gap:8px;margin-top:10px">';
+        focusHtml += '<input type="number" class="inp input-large" id="bw-inp" style="flex:1" placeholder="'+weightUnitLabel()+'" value="'+(BW[selDate] ? toDisplayWeight(BW[selDate]) : '')+'">';
+        focusHtml += '<button class="btn bp" id="bw-btn">Save</button>';
+        focusHtml += '</div>';
       }
-      h += '</div>';
 
-      h += '<div class="card home-stack-card">';
-      h += '<div class="home-card-title" style="margin-bottom:8px">🍽️ Nutrition Summary</div>';
-      h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">';
-      h += '<div><div style="font-size:16px;font-weight:900">'+homeTotals.cal+' / '+homeGoals.cal+'</div><div class="home-meta">Calories</div></div>';
-      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.p)+' / '+homeGoals.p+'g</div><div class="home-meta">Protein</div></div>';
-      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.c)+' / '+homeGoals.c+'g</div><div class="home-meta">Carbs</div></div>';
-      h += '<div><div style="font-size:16px;font-weight:900">'+Math.round(homeTotals.f)+' / '+homeGoals.f+'g</div><div class="home-meta">Fat</div></div>';
-      h += '</div>';
-      h += '<div class="home-guidance">Calories remaining: '+homeCalRemaining+' · Protein remaining: '+homeProteinRemaining+'g</div>';
-      h += '<div class="row" style="gap:8px;margin-top:10px">';
-      h += '<button class="btn bs" id="home-log-food" style="flex:1">Log Food</button>';
-      h += '<button class="btn bp" id="home-start-workout" style="flex:1">'+(((W[selDate]||[]).length ? 'Continue Workout' : 'Start Workout'))+'</button>';
-      h += '</div>';
-      h += '</div>';
+var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
+      if (dashboardRenderer) {
+        h += dashboardRenderer({
+          greeting: 'Welcome back, ' + esc((P.name || 'Lifter')),
+          headline: 'Push Day — Week ' + (Math.ceil((new Date(selDate+'T00:00:00').getDate()) / 7) || 1),
+          adherence: adhPct,
+          calories: homeTotals.cal,
+          protein: Math.round(homeTotals.p || 0),
+          caloriePct: caloriePct,
+          proteinPct: proteinPct,
+          focusTitle: (focusData.routine && focusData.routine.name) ? esc(focusData.routine.name) : 'Daily Targets',
+          focusMeta: 'Calories remaining: ' + homeCalRemaining + ' · Protein remaining: ' + homeProteinRemaining + 'g',
+          focusHtml: focusHtml,
+          weightValue: todayWeight ? (toDisplayWeight(todayWeight) + ' ' + weightUnitLabel()) : 'No Weigh-In',
+          weightMeta: (weightInfo && weightInfo.hasData) ? ('7-day avg: ' + toDisplayWeight(weightInfo.avg7) + ' ' + weightUnitLabel()) : 'Log bodyweight to unlock trend',
+          momentumValue: adh.workouts + '/' + adh.plan,
+          momentumMeta: lastWorkout ? ('Last workout: ' + esc(lastWorkout.name) + ' · ' + esc(fmtS(lastWorkout.date))) : 'Last workout: —'
+        });
+      }
     }
 
     if (view === "track") {
@@ -3568,7 +3536,10 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     document.querySelectorAll(".nb").forEach(function(btn){
       btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
     });
-
+ if (window.IronLogAnimations) {
+      window.IronLogAnimations.addPressFeedback('.nb, .btn, .thm');
+      if (view === 'home') window.IronLogAnimations.animateInStagger('.dashboard-stagger', 60);
+    }
      var profileBtn = document.getElementById("profile-btn");
     if (profileBtn) profileBtn.onclick = function(){
       view = "profile";
