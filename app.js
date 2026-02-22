@@ -421,13 +421,25 @@ function buildDashboardAnalytics(){
   var muscleMap = {Chest:'Chest',Back:'Back',Legs:'Legs',Shoulders:'Shoulders',Arms:'Arms',Core:'Core'};
   var targets = { Chest: 16, Back: 16, Legs: 18, Shoulders: 12, Arms: 16, Core: 8 };
   var muscleVolumes = { Chest:0, Back:0, Legs:0, Shoulders:0, Arms:0, Core:0 };
+  if (window.IronLogUserStore && isSignedIn()) {
+    var mv = window.IronLogUserStore.getState().muscleVolume || {};
+    muscleVolumes = {
+      Chest: +(mv.chest || 0),
+      Back: +(mv.back || 0),
+      Legs: +((mv.quads || 0) + (mv.hamstrings || 0) + (mv.glutes || 0)),
+      Shoulders: +(mv.shoulders || 0),
+      Arms: +((mv.biceps || 0) + (mv.triceps || 0)),
+      Core: muscleVolumes.Core
+    };
+  }
   var exerciseProgress = [];
   var prsThisWeek = 0;
   var dates = lastNDates(7);
+  var useRemoteVolume = !!(window.IronLogUserStore && isSignedIn());
   dates.forEach(function(d){
     (W[d] || []).forEach(function(ex){
       var m = muscleMap[ex.group];
-      if (m) muscleVolumes[m] += (ex.sets || []).length;
+      if (!useRemoteVolume && m) muscleVolumes[m] += (ex.sets || []).length;
       var last = getLastExerciseSession(ex.exercise, d);
       var cur = entryStrengthScore(ex);
       var prev = last ? entryStrengthScore(last.entry) : 0;
@@ -844,6 +856,7 @@ var cloudSyncEnabled = true;
   var cloudHydrating = false;
   var stateUpdatedAt = ld("il_state_updated_at", 0) || 0;
    var authInitAttempts = 0;
+   var settingsSaveState = { saving:false, ok:false, error:"" };
    
   function initAuth() {
     if (!window.supabase) {
@@ -865,12 +878,15 @@ var cloudSyncEnabled = true;
 
     try {
       sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      window.sb = sb;
       sb.auth.getSession().then(function(res) {
         authSession = (res && res.data && res.data.session) ? res.data.session : null;
         authReady = true;
 if (authSession && authSession.user) {
+if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id);
 cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
 } else {
+          if (window.IronLogUserStore) window.IronLogUserStore.setUser(null);
           render();
         }
       }).catch(function(err) {
@@ -883,8 +899,10 @@ cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ re
         authSession = session || null;
         if (authSession) authMsg = "";
 if (authSession && authSession.user) {
+if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id);
 cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
 } else {
+          if (window.IronLogUserStore) window.IronLogUserStore.setUser(null);
           render();
         }
       });
@@ -2857,8 +2875,9 @@ var weightInfo = getRecentWeightTrendInfo();
       var consistencyPct = Math.min(100, Math.round((adh.plan ? (adh.workouts / Math.max(adh.plan,1)) : 0) * 100));
       var exUsed = {};
       Object.keys(W || {}).forEach(function(d){ (W[d]||[]).forEach(function(ex){ exUsed[ex.name]=1; }); });
+      var storeState = (window.IronLogUserStore && isSignedIn()) ? window.IronLogUserStore.getState() : null;
       var adaptiveCtx = {
-        user: USER,
+        user: Object.assign({}, USER, { manualModeOverride: (storeState && storeState.settings && storeState.settings.manual_mode_override) ? ((storeState.profile && storeState.profile.lifter_mode) || USER.manualModeOverride || "auto") : "auto" }),
         workoutCount: workoutCount,
         consistency: consistencyPct,
         exerciseVariety: Object.keys(exUsed).length,
@@ -2872,7 +2891,7 @@ var weightInfo = getRecentWeightTrendInfo();
         weakPoint: todayFocusItems.length ? todayFocusItems[0].group : "None",
         prPrediction: lastWorkout ? "Bench +2.5 soon" : "Build baseline"
       };
-      adaptiveCtx.mode = adaptive ? adaptive.detectMode(adaptiveCtx) : "intermediate";
+      adaptiveCtx.mode = (window.IronLogUserStore && isSignedIn()) ? window.IronLogUserStore.getResolvedLifterMode() : (adaptive ? adaptive.detectMode(adaptiveCtx) : "intermediate");
       adaptiveCtx.device = adaptive ? adaptive.detectDevice() : "mobile";
       adaptiveCtx.timeSegment = adaptive ? adaptive.getTimeSegment() : "day";
       adaptiveCtx.phase = adaptive ? adaptive.getTrainingPhase(adaptiveCtx) : "build";
@@ -3484,10 +3503,14 @@ h += '<select class="inp" id="set-goal"><option value="cut"'+(gm==='cut'?' selec
       h += '</div>';
       h += '<div style="height:10px"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Adaptive mode override</div>';
-      var mo = USER.manualModeOverride || "auto";
+      var storeStateProfile = (window.IronLogUserStore && isSignedIn()) ? window.IronLogUserStore.getState() : null;
+      var mo = (storeStateProfile && storeStateProfile.settings && storeStateProfile.settings.manual_mode_override) ? ((storeStateProfile.profile && storeStateProfile.profile.lifter_mode) || "auto") : (USER.manualModeOverride || "auto");
       h += '<select class="inp" id="set-mode-override"><option value="auto"'+(mo==='auto'?' selected':'')+'>Auto detect</option><option value="beginner"'+(mo==='beginner'?' selected':'')+'>Beginner</option><option value="intermediate"'+(mo==='intermediate'?' selected':'')+'>Intermediate</option><option value="advanced"'+(mo==='advanced'?' selected':'')+'>Advanced</option></select></div>';
       h += '<div style="height:10px"></div>';
-h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px">Save Settings</button>';
+      var saveLabel = settingsSaveState.saving ? "Saving..." : "Save Settings";
+      h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px"'+(settingsSaveState.saving?' disabled':'')+'>'+saveLabel+'</button>';
+      if (settingsSaveState.ok) h += '<div style="font-size:11px;color:var(--gn);margin-top:6px">✓ Persisted</div>';
+      if (settingsSaveState.error) h += '<div style="font-size:11px;color:var(--rd);margin-top:6px">'+esc(settingsSaveState.error)+'</div>';
        h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">💾 Data</div>';
@@ -4603,12 +4626,29 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       USER.cutAggressiveness = USER.goalPace;
       USER.manualModeOverride = ((document.getElementById("set-mode-override")||{}).value || "auto");
       USER = normalizeUSER(USER);
-       saveAll();
-      if (isSignedIn()) {
-        cloudUpsertNow();
-      }
-      alert("Saved!");
+      settingsSaveState = { saving:true, ok:false, error:"" };
       render();
+      var persist = Promise.resolve();
+      if (isSignedIn() && window.IronLogUserStore) {
+        var overrideMode = USER.manualModeOverride || "auto";
+        persist = window.IronLogUserStore.updateUserSettings({ manual_mode_override: overrideMode !== "auto" })
+          .then(function(){
+            return window.IronLogUserStore.updateUserProfile({
+              lifter_mode: overrideMode,
+              preferred_units: USER.units === "kg" ? "metric" : "imperial",
+              theme: TH
+            });
+          });
+      }
+      persist.then(function(){
+        saveAll();
+        if (isSignedIn()) cloudUpsertNow();
+        settingsSaveState = { saving:false, ok:true, error:"" };
+        render();
+      }).catch(function(err){
+        settingsSaveState = { saving:false, ok:false, error: (err && err.message) ? err.message : "Could not save settings" };
+        render();
+      });
     };
 
     var exportBtn = document.getElementById("export-btn");
@@ -4678,6 +4718,21 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, WFIN:WFIN, DN_CACHE:DN_CACHE, NFOODS:
    sanitizeNutritionState();
 normalizeRoutines();  
 saveAll();
+  if (window.IronLogUserStore) {
+    window.IronLogUserStore.subscribe(function(st){
+      if (!st) return;
+      if (st.profile) {
+        USER.manualModeOverride = (st.settings && st.settings.manual_mode_override) ? (st.profile.lifter_mode || "auto") : "auto";
+        USER.experienceScore = st.profile.experience_score || USER.experienceScore || 0;
+      }
+      if (st.settings) {
+        USER.autoRestTimer = st.settings.auto_rest_timer;
+        USER.soundEnabled = st.settings.sound_enabled;
+      }
+      if (st.error) settingsSaveState.error = st.error;
+      if (typeof render === "function") render();
+    });
+  }
    initAuth();
   render();
    // Expose render + addFoodEntry for module bridging
