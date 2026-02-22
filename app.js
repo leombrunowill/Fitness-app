@@ -971,7 +971,7 @@ var view = ld("il_view", "home");
   if (legacyViewMap[view]) view = legacyViewMap[view];
   if (["home", "plan", "track", "progress", "social", "profile"].indexOf(view) < 0) view = "home";
   if (trackMode !== "workout" && trackMode !== "nutrition") trackMode = "workout";
-   var selDate = ld("il_selDate", tod());
+   var selDate = tod();
    var homeWeightEntryOpen = false;
   var lastHomeSuggestion = null;
   var planAccordionOpen = {};
@@ -1016,12 +1016,16 @@ function normalizeUSER(u) {
       cutAggressiveness: (src.cutAggressiveness === "performance" || src.cutAggressiveness === "aggressive") ? src.cutAggressiveness : (src.goalPace || "moderate"),
       weightUnit: src.weightUnit === "kg" ? "kg" : "lbs",
       nutritionUnit: (src.nutritionUnit === "ounces" || src.nutritionUnit === "bottles") ? src.nutritionUnit : "grams",
-autoGoals: src.autoGoals !== false,
+      autoGoals: src.autoGoals !== false,
       goal_type: (src.goal_type === "maintain" || src.goal_type === "bulk") ? src.goal_type : (src.goalMode || "cut"),
       weekly_rate_target: isFinite(+src.weekly_rate_target) ? +src.weekly_rate_target : -0.5,
       protein_target_per_lb: isFinite(+src.protein_target_per_lb) ? +src.protein_target_per_lb : 0.9,
       auto_calorie_adjustments: !!src.auto_calorie_adjustments,
-      manualModeOverride: (src.manualModeOverride === "beginner" || src.manualModeOverride === "intermediate" || src.manualModeOverride === "advanced") ? src.manualModeOverride : "auto"
+      manualModeOverride: (src.manualModeOverride === "beginner" || src.manualModeOverride === "intermediate" || src.manualModeOverride === "advanced") ? src.manualModeOverride : "auto",
+      name: String(src.name || ""),
+      trainingGoal: String(src.trainingGoal || ""),
+      experienceLevel: String(src.experienceLevel || ""),
+      bodyweightGoal: isFinite(+src.bodyweightGoal) ? +src.bodyweightGoal : 0
     };
   }
 var SOC = ld("il_social", {
@@ -2779,6 +2783,10 @@ var h = "";
       h += '<button class="pm" id="d-prev">←</button>';
       h += '<div style="text-align:center"><div style="font-size:15px;font-weight:800">'+esc(fmtD(selDate))+'</div><div style="font-size:10px;color:var(--mt)">'+(selDate===tod()?"Today":esc(selDate))+'</div></div>';
       h += '<button class="pm" id="d-next">→</button>';
+      h += '</div>';
+      if (selDate !== tod()) {
+        h += '<div class="row" style="justify-content:center;margin-top:8px"><button class="btn bs" id="d-today" style="padding:6px 10px;font-size:11px">Jump to Today</button></div>';
+      }
       h += '</div></div>';
     }
 
@@ -2868,8 +2876,8 @@ var weightInfo = getRecentWeightTrendInfo();
   var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
       if (dashboardRenderer) {
         h += dashboardRenderer({
-          greeting: 'Welcome back, ' + esc((((typeof USER!=="undefined" && USER && USER.name) ? USER.name : '') || 'Lifter')),
-          headline: 'Push Day — Week ' + (Math.ceil((new Date(selDate+'T00:00:00').getDate()) / 7) || 1),
+          greeting: 'Welcome back, ' + esc((USER && USER.name) || (SOC && SOC.profileName) || 'Athlete') + ',',
+          headline: ((focusData.routine && focusData.routine.name) ? esc(focusData.routine.name) : 'No workout assigned for this day'),
           adherence: adhPct,
           calories: homeTotals.cal,
           protein: Math.round(homeTotals.p || 0),
@@ -3444,6 +3452,8 @@ h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+
 
       if (view === "profile") {
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">Settings</div>';
+      h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Name</div><input id="set-name" class="inp" type="text" maxlength="40" value="'+esc(USER.name||"")+'"></div>';
+      h += '<div style="height:10px"></div>';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Training sessions/week</div><input id="set-sess" class="inp" type="number" min="0" max="14" value="'+(USER.sessionsPerWeek||5)+'"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:4px">Steps/day</div><input id="set-steps" class="inp" type="number" min="0" max="30000" step="500" value="'+(USER.stepsPerDay||10000)+'"></div>';
@@ -3760,6 +3770,8 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     var next = document.getElementById("d-next");
    if (prev) prev.onclick = function(){ selDate = addDays(selDate, -1); planSelectedDow = new Date(selDate + "T00:00:00").getDay(); sv("il_selDate", selDate); queueRender(60); };
     if (next) next.onclick = function(){ selDate = addDays(selDate, 1); planSelectedDow = new Date(selDate + "T00:00:00").getDay(); sv("il_selDate", selDate); queueRender(60); };
+    var todayBtn = document.getElementById("d-today");
+    if (todayBtn) todayBtn.onclick = function(){ selDate = tod(); planSelectedDow = new Date(selDate + "T00:00:00").getDay(); sv("il_selDate", selDate); queueRender(60); };
      
     var themeBtn = document.getElementById("thm-btn");
     if (themeBtn) themeBtn.onclick = function(){
@@ -3785,13 +3797,6 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     document.querySelectorAll(".nb").forEach(function(btn){
       btn.classList.toggle("on", (btn.getAttribute("data-v") === view));
     });
-    if (window.IronLogAdaptive) {
-      var pri = window.IronLogAdaptive.navPriority(view);
-      var nav = document.querySelector(".bnav");
-      if (nav && pri && pri.length) {
-        pri.forEach(function(k){ var node = nav.querySelector('.nb[data-v="'+k+'"]'); if (node) nav.appendChild(node); });
-      }
-    }
   if (window.IronLogAnimations) {
       window.IronLogAnimations.addPressFeedback('.nb, .btn, .thm');
       if (view === 'home') window.IronLogAnimations.animateInStagger('.dashboard-stagger', 60);
@@ -4575,6 +4580,7 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
     if (saveSet) saveSet.onclick = function(){
       var sess = parseInt((document.getElementById("set-sess")||{}).value, 10);
       var steps = parseInt((document.getElementById("set-steps")||{}).value, 10);
+      USER.name = String(((document.getElementById("set-name")||{}).value || "")).trim();
       if (!isNaN(sess)) USER.sessionsPerWeek = Math.max(0, Math.min(14, sess));
       if (!isNaN(steps)) USER.stepsPerDay = Math.max(0, Math.min(30000, steps));
       USER.goalMode = ((document.getElementById("set-goal")||{}).value || "cut");
