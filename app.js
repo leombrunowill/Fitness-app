@@ -971,6 +971,7 @@ var view = ld("il_view", "home");
    var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
      var PROG_PR_FILTER = ld("il_progress_pr_filter", null); // selected exercises shown in progress PR list
   var NLOG = ld("il_nlog", {});   // nutrition log by date
+  var WFIN = ld("il_workout_finished", {}); // completed workout state by date
    var DN_CACHE = ld("il_daily_nutrition_cache", {}); // cached nutrition totals by date
    var RLIB = ld("il_routines", []); // saved workout routines
   var RSCHED = ld("il_routine_sched", {}); // weekday -> routine id
@@ -1102,6 +1103,7 @@ function normalizeWeightUnit(unit) {
     sv("il_pr", PR);
          sv("il_progress_pr_filter", PROG_PR_FILTER);
     sv("il_nlog", NLOG);
+    sv("il_workout_finished", WFIN);
          sv("il_daily_nutrition_cache", DN_CACHE);
      sv("il_routines", RLIB);
     sv("il_routine_sched", RSCHED);
@@ -1122,6 +1124,7 @@ function normalizeWeightUnit(unit) {
       bw: BW || {},
       pr: PR || {},
       nlog: NLOG || {},
+      wfin: WFIN || {},
              ncache: DN_CACHE || {},
       nfoods: NFOODS || {},
       user_settings: USER || {},
@@ -1141,6 +1144,7 @@ function normalizeWeightUnit(unit) {
       BW = row.bw || {};
       PR = row.pr || {};
       NLOG = row.nlog || {};
+      WFIN = row.wfin || {};
              DN_CACHE = row.ncache || {};
       NFOODS = row.nfoods || {};
       USER = normalizeUSER(row.user_settings || {});
@@ -1619,6 +1623,21 @@ function buildPRTrendData(exerciseNames) {
   function ensureDay(ds) {
     if (!W[ds]) W[ds] = [];
     if (!NLOG[ds]) NLOG[ds] = [];
+    if (typeof WFIN[ds] !== "boolean") WFIN[ds] = false;
+  }
+
+  function workoutSummary(ds) {
+    var day = W[ds] || [];
+    var exCount = day.length;
+    var setCount = 0;
+    var volume = 0;
+    day.forEach(function(ex){
+      (ex.sets || []).forEach(function(st){
+        setCount += 1;
+        volume += (+st.w || 0) * (+st.r || 0);
+      });
+    });
+    return { exCount: exCount, setCount: setCount, volume: Math.round(toDisplayWeight(volume)) };
   }
 
    var DEFAULT_ROUTINES = [
@@ -2833,19 +2852,31 @@ var weightInfo = getRecentWeightTrendInfo();
        h += '</div></div>';
 
       var day = W[selDate] || [];
-       h += '<div class="row" style="gap:8px;margin-bottom:8px">';
-      h += '<button class="btn bp" id="start-workout-btn" style="flex:1">▶ Start Workout</button>';
-      h += '<button class="btn bs" id="finish-workout-btn" style="flex:1">✅ Finish Workout</button>';
+      var isFinished = !!WFIN[selDate];
+      var sum = workoutSummary(selDate);
+      h += '<div class="row" style="gap:8px;margin-bottom:8px">';
+      h += '<button class="btn bp" id="start-workout-btn" style="flex:1">'+(isFinished?'✏️ Edit Workout':'▶ Start Workout')+'</button>';
+      h += '<button class="btn bs" id="finish-workout-btn" style="flex:1">✅ '+(isFinished?'Finished':'Finish Workout')+'</button>';
       h += '</div>';
       h += '<div class="row" style="justify-content:space-between;margin-top:4px;align-items:center">';
       h += '<div class="sect" style="margin:0">🏋️ Today\'s Workout</div>';
-       h += '<div class="row" style="gap:6px">';
+      h += '<div class="row" style="gap:6px">';
       h += '<button class="btn bs" id="share-workout-btn" style="padding:6px 10px;font-size:11px">🤝 Share</button>';
-      h += '<button class="btn bp" data-act="add-ex" style="padding:6px 10px;font-size:11px">➕ Add</button>';
-       h += '</div>';
-       h += '</div><div style="height:8px"></div>';
+      if (!isFinished) h += '<button class="btn bp" data-act="add-ex" style="padding:6px 10px;font-size:11px">➕ Add</button>';
+      h += '</div>';
+      h += '</div><div style="height:8px"></div>';
 
-      if (!day.length) {
+      if (isFinished) {
+        h += '<div class="card workout-summary-card" style="margin-bottom:10px">';
+        h += '<div style="font-size:11px;color:var(--mt);font-weight:800;text-transform:uppercase">Workout Completed</div>';
+        h += '<div class="row" style="gap:8px;margin-top:8px">';
+        h += '<div class="pill">Exercises: <strong>'+sum.exCount+'</strong></div>';
+        h += '<div class="pill">Sets: <strong>'+sum.setCount+'</strong></div>';
+        h += '<div class="pill">Volume: <strong>'+sum.volume+' '+weightUnitLabel()+'</strong></div>';
+        h += '</div>';
+        h += '<button class="btn bs" id="edit-finished-workout" style="margin-top:10px;width:100%">✏️ Edit finished workout</button>';
+        h += '</div>';
+      } else if (!day.length) {
         h += '<div class="empty"><div style="font-size:40px;margin-bottom:8px">🏋️</div>No exercises logged yet.</div>';
       } else {
         day.forEach(function(ex, idx){
@@ -2885,15 +2916,17 @@ h += '<div class="weight-stepper"><button class="ws-btn" data-act="adjust-weight
             }
 });
           h += '</div>';
-            h += '<button class="btn bs set-complete" data-act="set-complete" data-i="'+idx+'">Swipe → Complete Set Block</button>';
+            h += '<button class="btn bs set-complete" data-act="set-complete" data-i="'+idx+'" data-swipe-ready="0">Swipe → Complete Set Block</button>';
           if (ex.note) h += '<div style="margin-top:8px;font-size:11px;color:var(--mt);font-style:italic">📝 '+esc(ex.note)+'</div>';
           h += '</div>';
         });
       }
 
+      if (!isFinished) {
         h += '<div class="row" style="justify-content:center;margin-top:10px">';
-      h += '<button class="btn bp" data-act="add-ex" style="padding:10px 14px;font-size:12px">➕ Add Workout</button>';
-      h += '</div>';
+        h += '<button class="btn bp" data-act="add-ex" style="padding:10px 14px;font-size:12px">➕ Add Workout</button>';
+        h += '</div>';
+      }
     }
               
     if (view === "progress") {
@@ -3789,12 +3822,32 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
     });
      var startWorkoutBtn = document.getElementById("start-workout-btn");
     if (startWorkoutBtn) startWorkoutBtn.onclick = function(){
+      ensureDay(selDate);
+      if (WFIN[selDate]) {
+        WFIN[selDate] = false;
+        saveAll();
+        showToast('Workout reopened for edits ✏️');
+        render();
+        return;
+      }
       openAddExerciseModal();
     };
 
     var finishWorkoutBtn = document.getElementById("finish-workout-btn");
     if (finishWorkoutBtn) finishWorkoutBtn.onclick = function(){
-      alert("Workout saved for " + fmtD(selDate) + ". Great work!");
+      ensureDay(selDate);
+      if (!W[selDate] || !W[selDate].length) return alert("Add at least one exercise before finishing.");
+      WFIN[selDate] = true;
+      saveAll();
+      showToast("Workout saved for " + fmtD(selDate) + " ✅");
+      render();
+    };
+
+    var editFinishedWorkoutBtn = document.getElementById("edit-finished-workout");
+    if (editFinishedWorkoutBtn) editFinishedWorkoutBtn.onclick = function(){
+      WFIN[selDate] = false;
+      saveAll();
+      render();
     };
      
 var shareWorkoutBtn = document.getElementById("share-workout-btn");
@@ -3865,8 +3918,30 @@ else if (act === "set-time") ex.sets[setIdx].t = Math.max(0, Math.round(v * 10) 
     });
 
     document.querySelectorAll('[data-act="set-complete"]').forEach(function(btn){
-      btn.onclick = function(){
+      var sx = 0;
+      btn.onpointerdown = function(e){ sx = e.clientX || 0; this.setPointerCapture && this.setPointerCapture(e.pointerId); };
+      btn.onpointerup = function(e){
+        var dx = (e.clientX || 0) - sx;
+        if (dx < 40) {
+          showToast('Swipe farther to complete ↔️');
+          return;
+        }
+        var exIdx = parseInt(this.getAttribute('data-i'), 10);
         this.classList.add('set-complete-done');
+        if (!isNaN(exIdx)) {
+          var ex = (W[selDate] || [])[exIdx];
+          if (ex && Array.isArray(ex.sets)) {
+            ex.sets.forEach(function(st){
+              if (!isCardioEntry(ex)) {
+                if (!(+st.r)) st.r = 10;
+              } else if (!(+st.t)) {
+                st.t = 20;
+              }
+            });
+            updatePRFromEntry(selDate, ex);
+            saveAll();
+          }
+        }
         showToast('Set block completed ✅');
       };
     });
@@ -4441,7 +4516,7 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
 
     var exportBtn = document.getElementById("export-btn");
     if (exportBtn) exportBtn.onclick = function(){
-var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, DN_CACHE:DN_CACHE, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC, RLIB:RLIB, RSCHED:RSCHED };
+var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, WFIN:WFIN, DN_CACHE:DN_CACHE, NFOODS:NFOODS, USER:USER, TH:TH, SOC:SOC, RLIB:RLIB, RSCHED:RSCHED };
        var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -4464,6 +4539,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, DN_CACHE:DN_CACHE, NFOODS:NFOODS, USE
           if (data.BW) BW = data.BW;
           if (data.PR) PR = data.PR;
           if (data.NLOG) NLOG = data.NLOG;
+          if (data.WFIN) WFIN = data.WFIN;
                      if (data.DN_CACHE) DN_CACHE = data.DN_CACHE;
           if (data.NFOODS) NFOODS = data.NFOODS;
           if (data.USER) USER = data.USER;
@@ -4488,7 +4564,7 @@ var data = { W:W, BW:BW, PR:PR, NLOG:NLOG, DN_CACHE:DN_CACHE, NFOODS:NFOODS, USE
     var resetBtn = document.getElementById("reset-btn");
     if (resetBtn) resetBtn.onclick = function(){
       if (!confirm("Reset all data? This cannot be undone.")) return;
- W = {}; BW = {}; PR = {}; NLOG = {}; DN_CACHE = {}; SOC = normalizeSOC(); RLIB = DEFAULT_ROUTINES.slice(); RSCHED = {};
+ W = {}; BW = {}; PR = {}; NLOG = {}; WFIN = {}; DN_CACHE = {}; SOC = normalizeSOC(); RLIB = DEFAULT_ROUTINES.slice(); RSCHED = {};
        sanitizeWorkoutState();
        sanitizeNutritionState();
       saveAll();
