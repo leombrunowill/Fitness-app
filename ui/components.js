@@ -29,7 +29,6 @@
     return DS.AppPage(
       DS.AppContainer(
         DS.AppGrid(
-          topNav(data.greeting, data.headline) +
           DS.AppSection('Today\'s Focus', DS.AppCard(
             '<p class="AppStat-value">' + data.focusTitle + '</p>' +
             '<p class="home-meta">' + data.focusMeta + '</p>' +

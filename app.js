@@ -3016,6 +3016,12 @@ var nav = document.querySelector(".bnav");
      if (!loggedIn && timerBar) timerBar.style.display = "none";
     
 var h = "";
+    if (view === "home") {
+      var userDisplayName = ((USER && USER.name) || (SOC && SOC.profileName) || "").trim();
+      var emailPrefix = ((USER && USER.email) ? String(USER.email).split("@")[0] : "").trim();
+      var firstName = (userDisplayName ? userDisplayName.split(/\s+/)[0] : "") || emailPrefix || "there";
+      h += '<section class="card" style="margin-bottom:8px"><div style="font-size:28px;font-weight:900;line-height:1.2">Welcome back, '+esc(firstName)+' 👋</div></section>';
+    }
     h += renderAuthStatusCard();
 
     if (!loggedIn) {
