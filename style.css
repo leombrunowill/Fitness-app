@@ -514,3 +514,8 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 .rest-label{font-size:12px;font-weight:600;color:var(--text-secondary)}
 .rest-go{display:none;font-size:14px;font-weight:800;color:var(--success)}
 .AppButton.danger{background:var(--danger);color:white}
+
+.settings-toggle-grid{display:grid;gap:8px}
+.settings-toggle-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:10px;border-radius:10px;background:var(--c2);font-size:12px;font-weight:700;color:var(--tx)}
+.settings-toggle-row input{width:18px;height:18px;accent-color:var(--bl)}
+.settings-toggle-meta{font-size:10px;color:var(--mt);min-width:56px;text-align:right}
