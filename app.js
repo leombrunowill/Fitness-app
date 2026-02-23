@@ -898,6 +898,57 @@ var cloudSyncEnabled = true;
     cloud: { loading:false, error:"" },
     social: { loading:false, error:"" }
   };
+  var fitnessSyncTimer = null;
+  var fitnessHydrating = false;
+
+  function getFitnessStore() {
+    return window.IronLogFitnessDataStore || null;
+  }
+
+  function scheduleFitnessSync() {
+    var store = getFitnessStore();
+    if (!store || fitnessHydrating) return;
+    if (!authSession || !authSession.user) return;
+    if (fitnessSyncTimer) clearTimeout(fitnessSyncTimer);
+    fitnessSyncTimer = setTimeout(function(){
+      store.replaceAllFitnessData({ W: W, BW: BW, NLOG: NLOG, WFIN: WFIN }).catch(function(err){
+        authMsg = "Fitness sync failed: " + ((err && err.message) ? err.message : "Unknown error");
+        render();
+      });
+    }, 600);
+  }
+
+  function hydrateFitnessData() {
+    var store = getFitnessStore();
+    if (!store || !authSession || !authSession.user) return Promise.resolve();
+    fitnessHydrating = true;
+    return store.migrateLocalDataIfNeeded()
+      .then(function(){ return store.hydrateFitnessState(); })
+      .then(function(data){
+        if (!data) return;
+        W = data.W || {};
+        BW = data.BW || {};
+        NLOG = data.NLOG || {};
+        WFIN = data.WFIN || {};
+        if (data.goal) {
+          USER.goalMode = data.goal.goal_type || USER.goalMode;
+          USER.goal_type = data.goal.goal_type || USER.goal_type;
+          if (data.goal.target_weight != null) USER.bodyweightGoal = +data.goal.target_weight || USER.bodyweightGoal;
+          if (data.goal.weekly_pace != null) USER.weekly_rate_target = +data.goal.weekly_pace || USER.weekly_rate_target;
+        }
+      })
+      .finally(function(){
+        fitnessHydrating = false;
+      });
+  }
+
+  function subscribeFitnessRealtime() {
+    var store = getFitnessStore();
+    if (!store || !authSession || !authSession.user) return;
+    store.subscribeRealtime(function(){
+      hydrateFitnessData().then(function(){ render(); });
+    });
+  }
 
   function appSkeletonBlock(height) {
     return '<div class="AppSkeleton" aria-hidden="true" style="height:'+height+'px;width:100%"></div>';
@@ -962,9 +1013,12 @@ if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id
 Promise.all([
   useUserSettings().hydrate(),
   cloudLoad(),
+  hydrateFitnessData(),
   loadSocialGraph(),
   loadInitialDashboardData()
-]).finally(function(){
+]).then(function(){
+  subscribeFitnessRealtime();
+}).finally(function(){
   completeInitialHydration();
 });
 } else {
@@ -985,9 +1039,12 @@ if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id
 Promise.all([
   useUserSettings().hydrate(),
   cloudLoad(),
+  hydrateFitnessData(),
   loadSocialGraph(),
   loadInitialDashboardData()
-]).finally(function(){
+]).then(function(){
+  subscribeFitnessRealtime();
+}).finally(function(){
   completeInitialHydration();
 });
 } else {
@@ -1139,13 +1196,13 @@ var view = ld("il_view", "home");
   var planSelectedDow = new Date(selDate + "T00:00:00").getDay();
   var renderDebounceTimer = null;
 
-  var W = ld("il_w", {});         // workouts by date
+  var W = {};         // workouts by date (Supabase source)
   var CEX = ld("il_custom_ex", {}); // custom exercises by group
-  var BW = ld("il_bw", {});       // bodyweight by date: number
+  var BW = {};       // bodyweight by date: number (Supabase source)
    var PR = ld("il_pr", {});       // pr by exercise: {e1rm, w, r, date}
      var PROG_PR_FILTER = ld("il_progress_pr_filter", null); // selected exercises shown in progress PR list
-  var NLOG = ld("il_nlog", {});   // nutrition log by date
-  var WFIN = ld("il_workout_finished", {}); // completed workout state by date
+  var NLOG = {};   // nutrition log by date (Supabase source)
+  var WFIN = {}; // completed workout state by date (Supabase source)
    var DN_CACHE = ld("il_daily_nutrition_cache", {}); // cached nutrition totals by date
    var RLIB = ld("il_routines", []); // saved workout routines
   var RSCHED = ld("il_routine_sched", {}); // weekday -> routine id
@@ -1280,12 +1337,8 @@ function normalizeWeightUnit(unit) {
          sv("il_track_mode", trackMode);
     sv("il_selDate", selDate);
     sv("il_custom_ex", CEX);
-     sv("il_w", W);
-    sv("il_bw", BW);
-    sv("il_pr", PR);
+     sv("il_pr", PR);
          sv("il_progress_pr_filter", PROG_PR_FILTER);
-    sv("il_nlog", NLOG);
-    sv("il_workout_finished", WFIN);
          sv("il_daily_nutrition_cache", DN_CACHE);
      sv("il_routines", RLIB);
     sv("il_routine_sched", RSCHED);
@@ -1295,6 +1348,17 @@ function normalizeWeightUnit(unit) {
      sv("il_social", SOC);
     sv("il_state_updated_at", stateUpdatedAt);
      if (authSession && authSession.user) {
+      scheduleFitnessSync();
+      var store = getFitnessStore();
+      if (store && typeof store.updateUserGoal === "function") {
+        store.updateUserGoal({
+          goal_type: USER.goal_type || USER.goalMode || "cut",
+          target_weight: USER.bodyweightGoal || null,
+          weekly_pace: USER.weekly_rate_target || null,
+          daily_calorie_target: USER.dailyCalorieTarget || null,
+          daily_protein_target: USER.dailyProteinTarget || null
+        }).catch(function(){});
+      }
       scheduleCloudUpsert();
               scheduleSocialProfileUpsert();
     }
@@ -1303,11 +1367,7 @@ function normalizeWeightUnit(unit) {
   function buildCloudPayload() {
     return {
       user_id: authSession && authSession.user ? authSession.user.id : null,
-      w: W || {},
-      bw: BW || {},
       pr: PR || {},
-      nlog: NLOG || {},
-      wfin: WFIN || {},
              ncache: DN_CACHE || {},
       nfoods: NFOODS || {},
       user_settings: USER || {},
@@ -1323,11 +1383,7 @@ function normalizeWeightUnit(unit) {
     if (!row || typeof row !== "object") return;
     cloudHydrating = true;
     try {
-      W = row.w || {};
-      BW = row.bw || {};
       PR = row.pr || {};
-      NLOG = row.nlog || {};
-      WFIN = row.wfin || {};
              DN_CACHE = row.ncache || {};
       NFOODS = row.nfoods || {};
       var incomingUser = (row.user_settings && typeof row.user_settings === "object") ? row.user_settings : null;
