@@ -920,7 +920,9 @@ var cloudSyncEnabled = true;
         authReady = true;
 if (authSession && authSession.user) {
 if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id);
+useUserSettings().hydrate().finally(function(){
 cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
+});
 } else {
           if (window.IronLogUserStore) window.IronLogUserStore.setUser(null);
           render();
@@ -936,7 +938,9 @@ cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ re
         if (authSession) authMsg = "";
 if (authSession && authSession.user) {
 if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id);
+useUserSettings().hydrate().finally(function(){
 cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
+});
 } else {
           if (window.IronLogUserStore) window.IronLogUserStore.setUser(null);
           render();
@@ -956,6 +960,55 @@ cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ re
 
    function isSignedIn() {
     return !!(authSession && authSession.user);
+  }
+
+  function useUserSettings() {
+    var fallback = {
+      auto_rest_timer: USER.autoRestTimer !== false,
+      sound_enabled: USER.soundEnabled !== false,
+      haptics_enabled: !!USER.hapticsEnabled,
+      adaptive_ui: USER.adaptiveUi !== false,
+      manual_mode_override: USER.manualModeOverride && USER.manualModeOverride !== "auto"
+    };
+    var store = window.IronLogUserStore;
+    if (!store) {
+      return {
+        settings: fallback,
+        profile: { lifter_mode: USER.manualModeOverride || "auto" },
+        loading: false,
+        saving: false,
+        saveOk: false,
+        error: "",
+        initialized: false,
+        updateSetting: function(){ return Promise.resolve(); },
+        setModeOverride: function(){ return Promise.resolve(); },
+        hydrate: function(){ return Promise.resolve(); }
+      };
+    }
+    var st = store.getState ? store.getState() : {};
+    return {
+      settings: Object.assign({}, fallback, st.settings || {}),
+      profile: st.profile || { lifter_mode: USER.manualModeOverride || "auto" },
+      loading: !!st.loading,
+      saving: !!st.saving,
+      saveOk: !!st.saveOk,
+      error: st.error || "",
+      initialized: !!st.initialized,
+      updateSetting: function(key, nextVal) {
+        var patch = {};
+        patch[key] = !!nextVal;
+        return store.updateUserSettings(patch);
+      },
+      setModeOverride: function(mode) {
+        var resolved = mode || "auto";
+        return store.updateUserSettings({ manual_mode_override: resolved !== "auto" })
+          .then(function(){ return store.updateUserProfile({ lifter_mode: resolved, preferred_units: USER.units === "kg" ? "metric" : "imperial", theme: TH }); });
+      },
+      hydrate: function() {
+        if (!isSignedIn()) return Promise.resolve();
+        return store.init(true);
+      }
+    };
   }
    
   function runAuthAction(kind) {
@@ -1546,7 +1599,9 @@ var friendIds = [];
   // Theme
   // -----------------------------
   function applyTheme() {
-    document.body.setAttribute("data-theme", TH === "light" ? "light" : "");
+    var isLight = TH === "light";
+    document.body.setAttribute("data-theme", isLight ? "light" : "dark");
+    document.body.classList.toggle("dark", !isLight);
     var b = document.getElementById("thm-btn");
     if (b) b.textContent = TH === "dark" ? "🌙" : "☀️";
   }
@@ -3591,15 +3646,24 @@ h += '<select class="inp" id="set-goal"><option value="cut"'+(gm==='cut'?' selec
       h += '<select class="inp" id="set-goal-pace"><option value="performance"'+(ag==='performance'?' selected':'')+'>performance</option><option value="moderate"'+(ag==='moderate'?' selected':'')+'>moderate</option><option value="aggressive"'+(ag==='aggressive'?' selected':'')+'>aggressive</option></select>';
       h += '</div>';
       h += '<div style="height:10px"></div>';
+      var userSettings = useUserSettings();
+      h += '<div style="font-size:10px;color:var(--mt);margin:2px 0 6px">Realtime settings sync (Supabase source of truth)</div>';
+      h += '<div class="settings-toggle-grid">';
+      h += '<label class="settings-toggle-row"><span>Auto rest timer</span><span class="settings-toggle-meta">'+(userSettings.saving?'Saving…':(userSettings.saveOk?'✓ Saved':''))+'</span><input id="toggle-auto-rest" type="checkbox" '+(userSettings.settings.auto_rest_timer?'checked':'')+'></label>';
+      h += '<label class="settings-toggle-row"><span>Sounds</span><span class="settings-toggle-meta">'+(userSettings.saving?'Saving…':(userSettings.saveOk?'✓ Saved':''))+'</span><input id="toggle-sound" type="checkbox" '+(userSettings.settings.sound_enabled?'checked':'')+'></label>';
+      h += '<label class="settings-toggle-row"><span>Haptics</span><span class="settings-toggle-meta">'+(userSettings.saving?'Saving…':(userSettings.saveOk?'✓ Saved':''))+'</span><input id="toggle-haptics" type="checkbox" '+(userSettings.settings.haptics_enabled?'checked':'')+'></label>';
+      h += '<label class="settings-toggle-row"><span>Adaptive UI</span><span class="settings-toggle-meta">'+(userSettings.saving?'Saving…':(userSettings.saveOk?'✓ Saved':''))+'</span><input id="toggle-adaptive" type="checkbox" '+(userSettings.settings.adaptive_ui?'checked':'')+'></label>';
+      h += '</div>';
+      h += '<div style="height:10px"></div>';
       h += '<div><div style="font-size:10px;color:var(--mt);margin-bottom:6px">Adaptive mode override</div>';
-      var storeStateProfile = (window.IronLogUserStore && isSignedIn()) ? window.IronLogUserStore.getState() : null;
-      var mo = (storeStateProfile && storeStateProfile.settings && storeStateProfile.settings.manual_mode_override) ? ((storeStateProfile.profile && storeStateProfile.profile.lifter_mode) || "auto") : (USER.manualModeOverride || "auto");
+      var mo = (userSettings.settings && userSettings.settings.manual_mode_override) ? ((userSettings.profile && userSettings.profile.lifter_mode) || "auto") : (USER.manualModeOverride || "auto");
       h += '<select class="inp" id="set-mode-override"><option value="auto"'+(mo==='auto'?' selected':'')+'>Auto detect</option><option value="beginner"'+(mo==='beginner'?' selected':'')+'>Beginner</option><option value="intermediate"'+(mo==='intermediate'?' selected':'')+'>Intermediate</option><option value="advanced"'+(mo==='advanced'?' selected':'')+'>Advanced</option></select></div>';
       h += '<div style="height:10px"></div>';
       var saveLabel = settingsSaveState.saving ? "Saving..." : "Save Settings";
       h += '<button class="btn bp bf" id="save-settings" style="margin-top:12px"'+(settingsSaveState.saving?' disabled':'')+'>'+saveLabel+'</button>';
       if (settingsSaveState.ok) h += '<div style="font-size:11px;color:var(--gn);margin-top:6px">✓ Persisted</div>';
       if (settingsSaveState.error) h += '<div style="font-size:11px;color:var(--rd);margin-top:6px">'+esc(settingsSaveState.error)+'</div>';
+      if (userSettings.error) h += '<div style="font-size:11px;color:var(--rd);margin-top:6px">'+esc(userSettings.error)+'</div>';
        h += '</div>';
 
       h += '<div class="card"><div style="font-size:13px;font-weight:900;margin-bottom:10px">💾 Data</div>';
@@ -4730,6 +4794,32 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       renderMsgThread();
     }
 
+    var settingsHook = useUserSettings();
+    function bindSettingsToggle(id, key) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.onchange = function() {
+        var nextVal = !!el.checked;
+        settingsHook.updateSetting(key, nextVal)
+          .then(function(){
+            if (key === "auto_rest_timer") USER.autoRestTimer = nextVal;
+            if (key === "sound_enabled") USER.soundEnabled = nextVal;
+            if (key === "haptics_enabled") USER.hapticsEnabled = nextVal;
+            if (key === "adaptive_ui") USER.adaptiveUi = nextVal;
+            saveAll();
+            render();
+          })
+          .catch(function(err){
+            settingsSaveState.error = (err && err.message) ? err.message : "Could not update setting";
+            render();
+          });
+      };
+    }
+    bindSettingsToggle("toggle-auto-rest", "auto_rest_timer");
+    bindSettingsToggle("toggle-sound", "sound_enabled");
+    bindSettingsToggle("toggle-haptics", "haptics_enabled");
+    bindSettingsToggle("toggle-adaptive", "adaptive_ui");
+
     var saveSet = document.getElementById("save-settings");
     if (saveSet) saveSet.onclick = function(){
       var sess = parseInt((document.getElementById("set-sess")||{}).value, 10);
@@ -4748,14 +4838,7 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       var persist = Promise.resolve();
       if (isSignedIn() && window.IronLogUserStore) {
         var overrideMode = USER.manualModeOverride || "auto";
-        persist = window.IronLogUserStore.updateUserSettings({ manual_mode_override: overrideMode !== "auto" })
-          .then(function(){
-            return window.IronLogUserStore.updateUserProfile({
-              lifter_mode: overrideMode,
-              preferred_units: USER.units === "kg" ? "metric" : "imperial",
-              theme: TH
-            });
-          });
+        persist = settingsHook.setModeOverride(overrideMode);
       }
       persist.then(function(){
         saveAll();
@@ -4845,6 +4928,8 @@ saveAll();
       if (st.settings) {
         USER.autoRestTimer = st.settings.auto_rest_timer;
         USER.soundEnabled = st.settings.sound_enabled;
+        USER.hapticsEnabled = st.settings.haptics_enabled;
+        USER.adaptiveUi = st.settings.adaptive_ui;
       }
       if (st.error) settingsSaveState.error = st.error;
       if (typeof render === "function") render();
