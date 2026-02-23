@@ -23,41 +23,6 @@ export function useLogFood(localDate: string) {
   return useMutation({
     mutationFn: (payload: { foodName: string; mealType: any; calories: number; protein: number; carbs?: number; fat?: number }) =>
       logFoodEntry(userId as string, { ...payload, localDate }),
-    onMutate: async (payload) => {
-      await qc.cancelQueries({ queryKey: nutritionKeys.day(userId, localDate) });
-      const prev = qc.getQueryData(nutritionKeys.day(userId, localDate));
-
-      qc.setQueryData(nutritionKeys.day(userId, localDate), (current: any) => {
-        if (!current) return current;
-        const optimistic = {
-          id: `optimistic-${Date.now()}`,
-          user_id: userId,
-          food_name: payload.foodName,
-          calories: Number(payload.calories || 0),
-          protein: Number(payload.protein || 0),
-          carbs: Number(payload.carbs || 0),
-          fat: Number(payload.fat || 0),
-          meal_type: payload.mealType,
-          local_date: localDate,
-          created_at: new Date().toISOString(),
-        };
-        current.meals[payload.mealType] = [optimistic, ...current.meals[payload.mealType]];
-        current.mealTotals[payload.mealType].calories += optimistic.calories;
-        current.mealTotals[payload.mealType].protein += optimistic.protein;
-        current.mealTotals[payload.mealType].carbs += optimistic.carbs;
-        current.mealTotals[payload.mealType].fat += optimistic.fat;
-        current.totals.calories += optimistic.calories;
-        current.totals.protein += optimistic.protein;
-        current.totals.carbs += optimistic.carbs;
-        current.totals.fat += optimistic.fat;
-        return { ...current };
-      });
-
-      return { prev };
-    },
-    onError: (_error, _payload, context) => {
-      if (context?.prev) qc.setQueryData(nutritionKeys.day(userId, localDate), context.prev);
-    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: nutritionKeys.day(userId, localDate) });
       qc.invalidateQueries({ queryKey: nutritionKeys.recent(userId, localDate) });

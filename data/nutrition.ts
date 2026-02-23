@@ -43,7 +43,16 @@ export type LogFoodPayload = {
   protein: number;
   carbs?: number;
   fat?: number;
-  localDate: string;
+  localDate?: string;
+};
+
+export type LogNutritionEntryInput = {
+  food_name: string;
+  calories: number;
+  protein: number;
+  carbs?: number;
+  fat?: number;
+  meal_type?: MealType | null;
 };
 
 function assertUserId(userId: string | null | undefined) {
@@ -125,26 +134,58 @@ export async function getNutritionDay(userId: string, localDate: string): Promis
 
 export async function logFoodEntry(userId: string, payload: LogFoodPayload): Promise<NutritionEntry> {
   assertUserId(userId);
+  const entry = await logNutritionEntry({
+    food_name: payload.foodName,
+    calories: payload.calories,
+    protein: payload.protein,
+    carbs: payload.carbs,
+    fat: payload.fat,
+    meal_type: payload.mealType,
+  });
+  if (entry.user_id !== userId) throw new Error('Nutrition log user mismatch.');
+  return entry;
+}
+
+export async function logNutritionEntry({
+  food_name,
+  calories,
+  protein,
+  carbs,
+  fat,
+  meal_type,
+}: LogNutritionEntryInput): Promise<NutritionEntry> {
   const supabase = getSupabaseBrowserClient();
 
-  const insertPayload = {
-    user_id: userId,
-    food_name: payload.foodName.trim(),
-    meal_type: payload.mealType,
-    calories: Number(payload.calories || 0),
-    protein: Number(payload.protein || 0),
-    carbs: Number(payload.carbs || 0),
-    fat: Number(payload.fat || 0),
-    local_date: payload.localDate,
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  const user = userRes?.user;
+
+  if (userErr || !user) {
+    throw new Error('Not signed in.');
+  }
+
+  const localDate = new Date().toLocaleDateString('en-CA');
+
+  const payload = {
+    user_id: user.id,
+    food_name,
+    calories: Number(calories),
+    protein: Number(protein),
+    carbs: Number(carbs),
+    fat: Number(fat),
+    meal_type: meal_type ?? null,
+    local_date: localDate,
   };
 
   const { data, error } = await supabase
     .from('nutrition_logs')
-    .insert(insertPayload)
+    .insert(payload)
     .select('id,user_id,food_name,calories,protein,carbs,fat,meal_type,local_date,created_at')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw new Error(error.message);
+  }
+
   return normalizeNutritionRow(data);
 }
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionUser } from '@/components/providers/AppProviders';
 import { useToast } from '@/components/providers/ToastProvider';
 import { FavoriteFood, MEAL_TYPES, MealType } from '@/data/nutrition';
@@ -32,8 +32,10 @@ export function NutritionScreen() {
   const localDate = todayLocalDate();
   const { userId, loading } = useSessionUser();
   const { pushToast } = useToast();
+  const queryClient = useQueryClient();
   const [openMeal, setOpenMeal] = useState<MealType>('breakfast');
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const dayQuery = useNutritionDay(localDate);
   const logMutation = useLogFood(localDate);
@@ -168,17 +170,26 @@ export function NutritionScreen() {
             recents={recentQuery.data || []}
             favorites={favoritesQuery.data || []}
             onClose={() => setSheetOpen(false)}
-            onAdd={(payload) => {
-              logMutation.mutate(
-                { ...payload, mealType: openMeal },
-                {
-                  onSuccess: () => {
-                    pushToast('Saved ✓', 'success');
-                    setSheetOpen(false);
-                  },
-                  onError: (error) => pushToast((error as Error).message, 'error'),
-                },
-              );
+            isSaving={isSaving}
+            onAdd={async (payload) => {
+              try {
+                setIsSaving(true);
+
+                await logMutation.mutateAsync({ ...payload, mealType: openMeal });
+
+                pushToast('Saved ✓', 'success');
+
+                const currentDate = new Date().toLocaleDateString('en-CA');
+                await queryClient.invalidateQueries({ queryKey: ['nutritionDay', currentDate] });
+                await queryClient.invalidateQueries({ queryKey: nutritionKeys.day(userId, currentDate) });
+                await queryClient.invalidateQueries({ queryKey: nutritionKeys.recent(userId, currentDate) });
+                setSheetOpen(false);
+              } catch (e) {
+                const message = e instanceof Error ? e.message : 'Unknown error';
+                pushToast(`Save failed: ${message}`, 'error');
+              } finally {
+                setIsSaving(false);
+              }
             }}
             onFavorite={(payload) =>
               saveFavoriteMutation.mutate(payload, {
@@ -234,13 +245,15 @@ function FoodSheet({
   recents,
   favorites,
   mealType,
+  isSaving,
 }: {
   onClose: () => void;
-  onAdd: (payload: { foodName: string; calories: number; protein: number; carbs?: number; fat?: number }) => void;
+  onAdd: (payload: { foodName: string; calories: number; protein: number; carbs?: number; fat?: number }) => Promise<void>;
   onFavorite: (payload: { foodName: string; calories: number; protein: number; carbs?: number; fat?: number; servingLabel?: string }) => void;
   recents: FavoriteFood[];
   favorites: FavoriteFood[];
   mealType: MealType;
+  isSaving: boolean;
 }) {
   const [tab, setTab] = useState<'recent' | 'favorites' | 'search'>('recent');
   const [query, setQuery] = useState('');
@@ -308,7 +321,8 @@ function FoodSheet({
               </button>
             </div>
             <button
-              className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold"
+              className="mt-3 w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold disabled:opacity-60"
+              disabled={isSaving}
               onClick={() =>
                 onAdd({
                   foodName: selected.food_name,
@@ -318,8 +332,8 @@ function FoodSheet({
                   fat: selected.fat * qty,
                 })
               }
-            >
-              Add
+>
+              {isSaving ? 'Saving…' : 'Add'}
             </button>
           </div>
         ) : null}
