@@ -322,15 +322,16 @@ export async function logWorkoutEntry(input: WorkoutEntryInput) {
 
 export async function logNutritionEntry(input: NutritionEntryInput) {
   const { supabase, userId } = await getUserId();
+    const localDate = new Date().toLocaleDateString('en-CA');
   const payload = {
     user_id: userId,
     food_name: input.foodName?.trim() || 'Quick meal',
-    calories: input.calories,
-    protein: input.protein,
-    carbs: input.carbs || 0,
-    fat: input.fat || 0,
+       calories: Number(input.calories || 0),
+    protein: Number(input.protein || 0),
+    carbs: Number(input.carbs || 0),
+    fat: Number(input.fat || 0),
     meal_type: input.mealType || 'snack',
-    local_date: new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10),
+ local_date: localDate,
     created_at: new Date().toISOString(),
   };
 
@@ -349,7 +350,11 @@ export async function logNutritionEntry(input: NutritionEntryInput) {
     return payload;
   }
 
-  const { error } = await supabase.from('nutrition_logs').insert(payload);
+const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  const user = userRes?.user;
+  if (userErr || !user) throw new Error('Not signed in');
+
+  const { error } = await supabase.from('nutrition_logs').insert({ ...payload, user_id: user.id });
   if (error) throw error;
 
   return payload;
