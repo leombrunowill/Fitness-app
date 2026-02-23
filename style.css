@@ -508,3 +508,9 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
   .ctn{max-width:1200px}
   .adaptive-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+.nav-left{gap:8px;align-items:center}
+.nav-right{gap:4px}
+.rest-label{font-size:12px;font-weight:600;color:var(--text-secondary)}
+.rest-go{display:none;font-size:14px;font-weight:800;color:var(--success)}
+.AppButton.danger{background:var(--danger);color:white}

@@ -9,35 +9,36 @@
   <meta name="theme-color" content="#030712" />
   <title>Iron Log</title>
 
+  <link rel="stylesheet" href="styles/design-system.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 
-<body class="app-body">
+<body class="app-body AppPage">
   
   <div class="app-shell">
   <div class="hdr top-nav">
   <div class="hdr-in">
-<div class="row" style="gap:8px;align-items:center">
+<div class="row nav-left">
         <button class="thm" id="profile-btn" aria-label="Open Profile">👤</button>
         <div class="logo hardcore-logo" aria-label="Iron Log"><span class="logo-mark" aria-hidden="true">⛓</span><span class="logo-word">IRON LOG</span></div>
       </div>
-      <div class="row" style="gap:4px">
+      <div class="row nav-right">
         <button class="thm" id="thm-btn">🌙</button>
       </div>
     </div>
   </div>
 
   <div class="tbar" id="tbar">
-    <span style="font-size:12px;font-weight:600;color:var(--mt)">REST</span>
+    <span class="rest-label">REST</span>
     <span class="ttime" id="ttime">0:00</span>
-    <span id="tgo" style="display:none;font-size:14px;font-weight:800;color:var(--gn)">GO! 💪</span>
-    <button class="tbtn" style="background:var(--rd);color:#fff" id="tstop">✕</button>
+    <span id="tgo" class="rest-go">GO! 💪</span>
+    <button class="tbtn AppButton danger" id="tstop">✕</button>
   </div>
 
   <div id="confetti-mount"></div>
 
- <main class="app-container container" id="app-container">
-    <div class="ctn" id="app"></div>
+ <main class="app-container container AppContainer" id="app-container">
+    <div class="ctn AppGrid" id="app"></div>
     <section id="nutrition-root" class="nutrition-root"></section>
   </main>
   
@@ -69,6 +70,7 @@
   <script src="nutrition-intelligence/uiComponents.js"></script>
   <script src="nutrition-intelligence/initNutritionIntelligence.js"></script>
   <script src="ui/animations.js"></script>
+  <script src="ui/primitives/designSystem.js"></script>
   <script src="ui/components.js"></script>
   <script src="ui/adaptive.js"></script>
   <script src="supabase/stateStore.js"></script>
