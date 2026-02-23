@@ -1,5 +1,6 @@
 (function(){
   var DEFAULT_PROFILE = { lifter_mode:'auto', experience_score:0, preferred_units:'imperial', theme:'dark' };
+  var PROFILE_SELECT_COLUMNS = 'id,lifter_mode,experience_score,preferred_units,theme,updated_at';
   var DEFAULT_SETTINGS = { auto_rest_timer:true, sound_enabled:true, haptics_enabled:false, adaptive_ui:true, manual_mode_override:false, onboarding_completed:false };
   var MUSCLE_BUCKETS = ['chest','back','quads','hamstrings','shoulders','biceps','triceps','calves','glutes'];
   var queueKey = 'il_offline_write_queue';
