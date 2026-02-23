@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getSupabaseBrowserClient } from '@/supabase/browserClient';
 
 export type DashboardData = {
   firstName: string;
@@ -33,18 +33,65 @@ export type DashboardData = {
   todayDateLabel: string;
 };
 
+export type WorkoutEntryInput = { name?: string; muscleGroup?: string; reps?: number };
+export type NutritionEntryInput = { foodName?: string; calories: number; protein: number; carbs?: number; fat?: number; mealType?: string };
+
 type WorkoutRow = { id: string; name: string; started_at: string; completed_at: string | null };
 type SetRow = { id: string; workout_id: string; muscle_group: string | null; secondary_muscle_group: string | null; secondary_multiplier: number | null; reps: number | null; weight: number | null; created_at: string };
 
 const DAY = 24 * 60 * 60 * 1000;
 const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
 
+
+const LOCAL_DASHBOARD_KEY = 'fitness-local-dashboard';
+
+function buildLocalSeed(): DashboardData {
+  const now = new Date();
+  return recomputeDashboard({
+    firstName: 'Athlete',
+    streak: { current: 0, longest: 0 },
+    adherenceScore: 0,
+    nutritionAdherence: 0,
+    nextWorkout: null,
+    volumeStatus: [],
+    weakPoint: null,
+    nutritionProgress: { caloriesConsumed: 0, proteinConsumed: 0, caloriesTarget: 2200, proteinTarget: 160, calorieTargetReached: false },
+    todayBodyweight: null,
+    bodyweightLogs14d: [],
+    recoveryScore: 82,
+    todayFocus: { title: '', actionLabel: '', description: '' },
+    todayDateLabel: now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+  });
+}
+
+function readLocalDashboard(): DashboardData {
+  if (typeof window === 'undefined') return buildLocalSeed();
+  const raw = window.localStorage.getItem(LOCAL_DASHBOARD_KEY);
+  if (!raw) {
+    const seed = buildLocalSeed();
+    window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(seed));
+    return seed;
+  }
+  try {
+    return JSON.parse(raw) as DashboardData;
+  } catch {
+    const seed = buildLocalSeed();
+    window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(seed));
+    return seed;
+  }
+}
+
+function writeLocalDashboard(data: DashboardData) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(data));
+}
+
 function getFirstName(displayName: string | null | undefined) {
   if (!displayName) return 'Athlete';
   return displayName.trim().split(/\s+/)[0] || 'Athlete';
 }
 
-function buildWorkoutStreak(workouts: WorkoutRow[]) {
+export function buildWorkoutStreak(workouts: WorkoutRow[]) {
   const today = toIsoDate(new Date());
   const days = Array.from(new Set(workouts.map((w) => toIsoDate(new Date(w.completed_at || w.started_at))).filter((d) => d <= today))).sort();
 
@@ -71,24 +118,12 @@ function buildWorkoutStreak(workouts: WorkoutRow[]) {
     cursor -= DAY;
   }
 
-  if (!currentStreak) {
-    const yesterday = new Date(new Date(`${today}T00:00:00Z`).getTime() - DAY).toISOString().slice(0, 10);
-    if (daySet.has(yesterday)) {
-      currentStreak = 1;
-      let walk = new Date(`${yesterday}T00:00:00Z`).getTime() - DAY;
-      while (daySet.has(new Date(walk).toISOString().slice(0, 10))) {
-        currentStreak += 1;
-        walk -= DAY;
-      }
-    }
-  }
-
   return { current: currentStreak, longest };
 }
 
-function computeRecoveryScore(workouts: WorkoutRow[]) {
-  const latest = workouts.map((w) => new Date(w.completed_at || w.started_at).getTime()).sort((a, b) => b - a)[0];
-  if (!latest) return 82;
+export function computeRecoveryScoreFromDate(lastWorkoutAt: string | null) {
+  if (!lastWorkoutAt) return 82;
+  const latest = new Date(lastWorkoutAt).getTime();
   const daysSince = Math.max(0, Math.floor((Date.now() - latest) / DAY));
   return Math.max(45, Math.min(98, 90 - daysSince * 7));
 }
@@ -125,12 +160,31 @@ function getWeakPoint(volumeStatus: ReturnType<typeof getVolumeStatus>) {
   };
 }
 
+export function recomputeDashboard(data: DashboardData): DashboardData {
+  const weakPoint = getWeakPoint(data.volumeStatus);
+  const caloriesTarget = data.nutritionProgress.caloriesTarget;
+  const proteinTarget = data.nutritionProgress.proteinTarget;
+  const caloriePct = caloriesTarget > 0 ? Math.min(100, Math.round((data.nutritionProgress.caloriesConsumed / caloriesTarget) * 100)) : 0;
+  const proteinPct = proteinTarget > 0 ? Math.min(100, Math.round((data.nutritionProgress.proteinConsumed / proteinTarget) * 100)) : 0;
+  const nutritionAdherence = Math.round((caloriePct + proteinPct) / 2);
+
+  return {
+    ...data,
+    weakPoint,
+    nutritionAdherence,
+    adherenceScore: nutritionAdherence,
+    todayFocus: weakPoint
+      ? { title: `Bring up ${weakPoint.muscleGroup}`, actionLabel: 'View suggested exercises', description: weakPoint.reason }
+      : { title: 'Stay consistent', actionLabel: 'Start workout', description: "Complete today's session to protect your streak." },
+  };
+}
+
 export async function fetchDashboardData(): Promise<DashboardData> {
-  const supabase = createClientComponentClient();
+  const supabase = getSupabaseBrowserClient();
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id;
 
-  if (!userId) throw new Error('Not signed in');
+  if (!userId) return readLocalDashboard();
 
   const now = new Date();
   const today = toIsoDate(now);
@@ -164,26 +218,20 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
   const caloriesTarget = Number(goalRes.data?.daily_calorie_target || 0);
   const proteinTarget = Number(goalRes.data?.daily_protein_target || 0);
-  const caloriePct = caloriesTarget > 0 ? Math.min(100, Math.round((nutritionToday.caloriesConsumed / caloriesTarget) * 100)) : 0;
-  const proteinPct = proteinTarget > 0 ? Math.min(100, Math.round((nutritionToday.proteinConsumed / proteinTarget) * 100)) : 0;
 
-  const nutritionAdherence = Math.round((caloriePct + proteinPct) / 2);
   const streak = buildWorkoutStreak(workouts);
   const volumeStatus = getVolumeStatus(sets);
   const weakPoint = getWeakPoint(volumeStatus);
-  const recoveryScore = computeRecoveryScore(workouts);
 
   const nextWorkoutSource = workouts[0];
   const nextWorkoutSets = nextWorkoutSource ? sets.filter((s) => s.workout_id === nextWorkoutSource.id) : [];
   const primaryMuscles = Array.from(new Set(nextWorkoutSets.map((set) => set.muscle_group).filter(Boolean) as string[])).slice(0, 3);
 
-  const todayDateLabel = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-
-  return {
+  const base: DashboardData = {
     firstName: getFirstName(profileRes.data?.display_name),
     streak,
-    adherenceScore: nutritionAdherence,
-    nutritionAdherence,
+    adherenceScore: 0,
+    nutritionAdherence: 0,
     nextWorkout: nextWorkoutSource
       ? {
           name: nextWorkoutSource.name,
@@ -203,17 +251,103 @@ export async function fetchDashboardData(): Promise<DashboardData> {
     },
     todayBodyweight: todayBodyweight || null,
     bodyweightLogs14d: bodyweightLogs,
-    recoveryScore,
-    todayFocus: weakPoint
-      ? { title: `Bring up ${weakPoint.muscleGroup}`, actionLabel: 'View suggested exercises', description: weakPoint.reason }
-      : { title: 'Stay consistent', actionLabel: 'Start workout', description: "Complete today's session to protect your streak." },
-    todayDateLabel,
+    recoveryScore: computeRecoveryScoreFromDate(nextWorkoutSource?.completed_at || nextWorkoutSource?.started_at || null),
+    todayFocus: { title: '', actionLabel: '', description: '' },
+    todayDateLabel: now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
   };
+
+  return recomputeDashboard(base);
+}
+
+async function getUserId() {
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const userId = data.user?.id || null;
+  return { supabase, userId };
 }
 
 export async function logBodyweightEntry(value: number) {
-  const supabase = createClientComponentClient();
-  const { error } = await supabase.from('bodyweight_logs').insert({ weight: value });
+  const { supabase, userId } = await getUserId();
+  const payload = { user_id: userId, weight: value, created_at: new Date().toISOString() };
+  if (!userId) {
+    const current = readLocalDashboard();
+    const updated = { ...current, todayBodyweight: { value, loggedAt: payload.created_at }, bodyweightLogs14d: [...current.bodyweightLogs14d, { value, loggedAt: payload.created_at }].slice(-14) };
+    writeLocalDashboard(updated);
+    return { value, loggedAt: payload.created_at };
+  }
+  const { error } = await supabase.from('bodyweight_logs').insert(payload);
   if (error) throw error;
-  return { value, loggedAt: new Date().toISOString() };
+  return { value, loggedAt: payload.created_at };
+}
+
+export async function logWorkoutEntry(input: WorkoutEntryInput) {
+  const { supabase, userId } = await getUserId();
+  const now = new Date().toISOString();
+  const name = input.name?.trim() || 'Quick workout';
+  const muscleGroup = input.muscleGroup?.trim() || 'Full body';
+  const reps = Number.isFinite(input.reps) ? Number(input.reps) : 10;
+
+  if (!userId) {
+    const current = readLocalDashboard();
+    const nextVolume = [...current.volumeStatus];
+    const found = nextVolume.find((row) => row.muscle === muscleGroup);
+    if (found) found.value = Math.min(100, found.value + reps);
+    else nextVolume.push({ muscle: muscleGroup, value: reps, status: reps < 40 ? 'undertrained' : 'optimal' });
+    const updated = recomputeDashboard({
+      ...current,
+      nextWorkout: { name, primaryMuscles: [muscleGroup], exerciseCount: 1, snapshot: `Last completed ${new Date(now).toLocaleDateString()}` },
+      volumeStatus: nextVolume,
+      recoveryScore: computeRecoveryScoreFromDate(now),
+      streak: { current: current.streak.current + 1, longest: Math.max(current.streak.longest, current.streak.current + 1) },
+    });
+    writeLocalDashboard(updated);
+    return { workout: { id: 'local', name, started_at: now, completed_at: now }, set: { muscle_group: muscleGroup, reps } };
+  }
+
+  const workoutInsert = await supabase.from('workouts').insert({ user_id: userId, name, started_at: now, completed_at: now }).select('id,name,started_at,completed_at').single();
+  if (workoutInsert.error) throw workoutInsert.error;
+
+  const workoutId = workoutInsert.data.id;
+  const setInsert = await supabase.from('workout_sets').insert({ user_id: userId, workout_id: workoutId, muscle_group: muscleGroup, reps, completed: true, created_at: now });
+  if (setInsert.error) throw setInsert.error;
+
+  return {
+    workout: workoutInsert.data,
+    set: { muscle_group: muscleGroup, reps },
+  };
+}
+
+export async function logNutritionEntry(input: NutritionEntryInput) {
+  const { supabase, userId } = await getUserId();
+  const payload = {
+    user_id: userId,
+    food_name: input.foodName?.trim() || 'Quick meal',
+    calories: input.calories,
+    protein: input.protein,
+    carbs: input.carbs || 0,
+    fat: input.fat || 0,
+    meal_type: input.mealType || 'snack',
+    created_at: new Date().toISOString(),
+  };
+
+  if (!userId) {
+    const current = readLocalDashboard();
+    const updated = recomputeDashboard({
+      ...current,
+      nutritionProgress: {
+        ...current.nutritionProgress,
+        caloriesConsumed: current.nutritionProgress.caloriesConsumed + Number(payload.calories || 0),
+        proteinConsumed: current.nutritionProgress.proteinConsumed + Number(payload.protein || 0),
+        calorieTargetReached: current.nutritionProgress.caloriesConsumed + Number(payload.calories || 0) >= current.nutritionProgress.caloriesTarget,
+      },
+    });
+    writeLocalDashboard(updated);
+    return payload;
+  }
+
+  const { error } = await supabase.from('nutrition_logs').insert(payload);
+  if (error) throw error;
+
+  return payload;
 }
