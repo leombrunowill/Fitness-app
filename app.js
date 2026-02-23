@@ -3134,6 +3134,8 @@ var weightInfo = getRecentWeightTrendInfo();
   var dashboardRenderer = window.IronLogUI && window.IronLogUI.renderDashboard;
       if (dashboardRenderer) {
         h += dashboardRenderer({
+          greeting: 'Welcome, ' + esc((USER && USER.name) || (SOC && SOC.profileName) || 'Athlete') + ',',
+          headline: ((focusData.routine && focusData.routine.name) ? esc(focusData.routine.name) : 'No workout assigned for this day'),
           adherence: adhPct,
           calories: homeTotals.cal,
           protein: Math.round(homeTotals.p || 0),
