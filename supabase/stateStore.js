@@ -1,5 +1,6 @@
 (function(){
   var DEFAULT_PROFILE = { lifter_mode:'auto', experience_score:0, preferred_units:'imperial', theme:'dark' };
+  var PROFILE_SELECT_COLUMNS = 'id,lifter_mode,experience_score,preferred_units,theme,updated_at';
   var DEFAULT_SETTINGS = { auto_rest_timer:true, sound_enabled:true, haptics_enabled:false, adaptive_ui:true, manual_mode_override:false, onboarding_completed:false };
   var MUSCLE_BUCKETS = ['chest','back','quads','hamstrings','shoulders','biceps','triceps','calves','glutes'];
   var queueKey = 'il_offline_write_queue';
@@ -71,7 +72,22 @@
   };
   var listeners = [];
 
-  function emit(){ listeners.forEach(function(fn){ try { fn(clone(state)); } catch(_e){} }); }
+  function getPublicState(){
+    return {
+      profile: clone(state.profile),
+      settings: clone(state.settings),
+      muscleVolume: clone(state.muscleVolume),
+      loading: state.loading,
+      saving: state.saving,
+      saveOk: state.saveOk,
+      error: state.error,
+      initialized: state.initialized,
+      offlineQueue: clone(state.offlineQueue),
+      userId: state.userId
+    };
+  }
+
+  function emit(){ listeners.forEach(function(fn){ try { fn(getPublicState()); } catch(_e){} }); }
 
   function getClient(){ return window.sb || null; }
 
@@ -101,7 +117,7 @@
   async function getUserProfile(){
     var client = getClient();
     if (!client || !state.userId) return clone(DEFAULT_PROFILE);
-var res = await client.from('profiles').select(PROFILE_SELECT_COLUMNS).eq('id', state.userId).maybeSingle();
+    var res = await client.from('profiles').select(PROFILE_SELECT_COLUMNS).eq('id', state.userId).maybeSingle();
     if (res.error && extractMissingProfilesColumn(res.error)) {
       res = await client.from('profiles').select('*').eq('id', state.userId).maybeSingle();
     }
@@ -288,10 +304,10 @@ var res = await client.from('profiles').select(PROFILE_SELECT_COLUMNS).eq('id', 
   window.addEventListener('online', function(){ flushQueue().then(function(){ init(true); }); });
 
   window.IronLogUserStore = {
-    subscribe: function(fn){ listeners.push(fn); fn(clone(state)); return function(){ listeners = listeners.filter(function(x){ return x!==fn; }); }; },
+    subscribe: function(fn){ listeners.push(fn); fn(getPublicState()); return function(){ listeners = listeners.filter(function(x){ return x!==fn; }); }; },
     setUser: function(userId){ state.userId = userId; window.IronLogAuthUserId = userId; if (userId) init(); },
     init: init,
-    getState: function(){ return clone(state); },
+    getState: function(){ return getPublicState(); },
     getResolvedLifterMode: resolvedLifterMode,
     getUserProfile: getUserProfile,
     updateUserProfile: function(update){ return optimisticRun('profile', update, updateUserProfile); },
