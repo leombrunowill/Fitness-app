@@ -24,25 +24,7 @@
           window._IronLogApp.addFoodEntry(logEntry);
           return;
         }
-        // Fallback: write directly to localStorage
-        try {
-          var rawSelDate = localStorage.getItem("il_selDate");
-          var selDate = new Date().toISOString().slice(0, 10);
-          if (rawSelDate) {
-            try {
-              selDate = JSON.parse(rawSelDate) || selDate;
-            } catch (e1) {
-              selDate = String(rawSelDate || "").replace(/(^"|"$)/g, "") || selDate;
-            }
-          }
-          var nlog    = JSON.parse(localStorage.getItem("il_nlog") || "{}");
-          if (!nlog[selDate]) nlog[selDate] = [];
-          nlog[selDate].push(logEntry);
-          localStorage.setItem("il_nlog", JSON.stringify(nlog));
-          if (typeof window._ilRender === "function") window._ilRender();
-        } catch (e) {
-          console.error("Failed to save food entry:", e);
-        }
+        console.warn("[Iron Log] Unable to log food: app handler unavailable.");
       },
       onFoodFavorite: function() {}
     });
