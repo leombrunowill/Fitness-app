@@ -8,7 +8,7 @@ export type BodyweightEntry = {
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 export function getBodyweightTrend(entries: BodyweightEntry[]): BodyweightTrend {
-  const cutoff = Date.now() - 14 * MS_IN_DAY;
+  const cutoff = Date.now() - 7 * MS_IN_DAY;
   const recent = entries
     .filter((entry) => new Date(entry.loggedAt).getTime() >= cutoff)
     .sort((a, b) => new Date(a.loggedAt).getTime() - new Date(b.loggedAt).getTime());
