@@ -221,6 +221,18 @@ button,.btn,.nb,.pill,.pm{touch-action:manipulation}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes modalIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
+
+
+.app-loader{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg);z-index:500;transition:opacity .22s ease,visibility .22s ease}
+.app-loader-spinner{width:40px;height:40px;border-radius:50%;border:3px solid color-mix(in srgb,var(--steel) 30%, transparent);border-top-color:var(--steel);animation:appSpin .8s linear infinite}
+.app-loader-text{font-size:12px;color:var(--mt);font-weight:700;letter-spacing:.01em}
+.app-hydrating .app-shell{opacity:0;pointer-events:none}
+.app-hydrated #app-loader{opacity:0;visibility:hidden}
+.app-shell-fade-in{animation:appFadeIn .28s ease both}
+
+@keyframes appSpin{to{transform:rotate(360deg)}}
+@keyframes appFadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none !important;transition:none !important;scroll-behavior:auto !important}
 }
