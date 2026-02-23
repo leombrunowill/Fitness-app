@@ -1,0 +1,90 @@
+:root {
+  --bg-primary: hsl(220 33% 98%);
+  --bg-secondary: hsl(220 20% 95%);
+  --card: hsl(0 0% 100%);
+  --card-hover: hsl(220 20% 97%);
+  --border-subtle: hsl(220 14% 88%);
+  --text-primary: hsl(222 47% 11%);
+  --text-secondary: hsl(215 16% 40%);
+  --accent: hsl(217 91% 60%);
+  --accent-soft: hsl(217 91% 93%);
+  --danger: hsl(0 84% 60%);
+  --success: hsl(143 72% 38%);
+
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.15);
+  --shadow-md: 0 10px 24px rgb(15 23 42 / 0.18);
+
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+}
+
+body.dark {
+  --bg-primary: hsl(222 47% 8%);
+  --bg-secondary: hsl(222 28% 12%);
+  --card: hsl(222 28% 14%);
+  --card-hover: hsl(220 26% 18%);
+  --border-subtle: hsl(220 18% 24%);
+  --text-primary: hsl(210 40% 96%);
+  --text-secondary: hsl(215 18% 72%);
+  --accent: hsl(199 89% 58%);
+  --accent-soft: hsl(199 89% 20%);
+  --danger: hsl(0 84% 66%);
+  --success: hsl(146 72% 45%);
+}
+
+.AppPage { min-height: 100vh; background: var(--bg-primary); color: var(--text-primary); }
+.AppContainer { width: min(100%, 48rem); margin: 0 auto; padding: var(--space-lg); }
+.AppGrid { display: grid; gap: var(--space-lg); }
+
+.AppSection { display: grid; gap: var(--space-md); margin-bottom: var(--space-lg); }
+.AppCard {
+  background: var(--card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-lg);
+  transition: transform var(--duration-fast) ease, background-color var(--duration-base) ease, box-shadow var(--duration-base) ease;
+}
+.AppCard:hover { background: var(--card-hover); box-shadow: var(--shadow-md); }
+.AppCard:active { transform: scale(0.99); }
+.AppCard.is-loading { opacity: 0.7; pointer-events: none; }
+
+.AppButton {
+  min-height: 44px; padding: 0 var(--space-lg); border: 0; border-radius: var(--radius-md);
+  font-weight: 700; color: white; background: var(--accent); cursor: pointer;
+  transition: transform var(--duration-fast) ease, filter var(--duration-fast) ease;
+}
+.AppButton:hover { filter: brightness(1.05); }
+.AppButton:active { transform: translateY(1px) scale(0.99); }
+.AppButton[disabled], .AppButton.is-disabled { opacity: .55; pointer-events: none; }
+
+.AppInput,.AppSelect {
+  width:100%; min-height:44px; border-radius:var(--radius-md); border:1px solid var(--border-subtle);
+  background:var(--bg-secondary); color:var(--text-primary); padding:0 var(--space-md);
+}
+.AppInput:disabled,.AppSelect:disabled { opacity:.6; }
+
+.AppSwitch { display:inline-flex; align-items:center; gap:var(--space-sm); min-height:44px; }
+.AppSwitch input { width:44px; height:24px; accent-color: var(--accent); }
+
+.AppSkeleton { border-radius: var(--radius-md); background: linear-gradient(90deg, var(--bg-secondary), var(--card-hover), var(--bg-secondary)); background-size: 200% 100%; animation: fadeIn var(--duration-slow) ease infinite alternate; min-height: 44px; }
+
+.AppStat-value { font-size: 1.5rem; font-weight: 800; }
+.AppStat-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; }
+
+/* aliases for existing app usage */
+.card { background: var(--card); border-color: var(--border-subtle); border-radius: var(--radius-lg); }
+.btn { min-height: 44px; border-radius: var(--radius-md); }
+
+@keyframes fadeIn { from { opacity: 0.55; } to { opacity: 1; } }
