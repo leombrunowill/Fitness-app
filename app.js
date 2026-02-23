@@ -2855,6 +2855,7 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
       logo.setAttribute('data-logo-variants', 'logShield,skullDumbbell,fistBar');
     }
   }
+     
   function showModal(html) {
     var el = document.getElementById("mover");
     if (!el) return;
@@ -3052,8 +3053,7 @@ var nav = document.querySelector(".bnav");
      if (!loggedIn && timerBar) timerBar.style.display = "none";
     
 var h = "";
-    if (view === "home") {
-        var userDisplayName = ((USER && USER.name) || (SOC && SOC.profileName) || "").trim();
+var userDisplayName = ((USER && USER.name) || (SOC && SOC.profileName) || "").trim();
     var emailPrefix = ((USER && USER.email) ? String(USER.email).split("@")[0] : "").trim();
     var firstName = (userDisplayName ? userDisplayName.split(/\s+/)[0] : "") || emailPrefix || "";
     updateHeaderUI(firstName);
