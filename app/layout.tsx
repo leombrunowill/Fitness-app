@@ -1,3 +1,4 @@
+import './globals.css';
 import { PropsWithChildren } from 'react';
 import { AuthenticatedLayout } from '@/components/AuthenticatedLayout';
 import { AppProviders } from '@/components/providers/AppProviders';

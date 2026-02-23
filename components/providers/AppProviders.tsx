@@ -3,6 +3,7 @@
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { ToastProvider } from '@/components/providers/ToastProvider';
 
 type SessionUserContextValue = { userId: string | null; loading: boolean };
 const SessionUserContext = createContext<SessionUserContextValue>({ userId: null, loading: true });
@@ -36,7 +37,9 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SessionUserContext.Provider value={value}>{children}</SessionUserContext.Provider>
+      <ToastProvider>
+        <SessionUserContext.Provider value={value}>{children}</SessionUserContext.Provider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
