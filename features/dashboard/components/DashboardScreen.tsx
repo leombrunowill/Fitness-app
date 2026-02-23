@@ -1,9 +1,10 @@
 'use client';
 
+import { FormEvent, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AppCard, AppSection, AppSkeleton, AppStat } from '@/components/design-system';
+import { AppCard, AppSection, AppSkeleton, AppStat, CardContent, CardFooter, CardHeader } from '@/components/design-system';
+import type { BodyweightTrend } from '../utils/getBodyweightTrend';
 import type { DashboardData } from '../hooks/useDashboardData';
-import { getReadinessMessage } from '../utils/getReadinessMessage';
 
 const item = {
   hidden: { opacity: 0, y: 12 },
@@ -17,30 +18,97 @@ const container = {
 
 function ProgressBar({ value }: { value: number }) {
   return (
-    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+    <div className="h-2 overflow-hidden rounded-full bg-white/10">
       <motion.div className="h-full rounded-full bg-cyan-400" initial={{ width: 0 }} animate={{ width: `${Math.min(value, 100)}%` }} transition={{ duration: 0.35 }} />
     </div>
   );
 }
 
-function CountUp({ value, suffix = '' }: { value: number; suffix?: string }) {
+function DateSelector({ todayLabel }: { todayLabel: string }) {
+  const dates = useMemo(
+    () =>
+      Array.from({ length: 5 }).map((_, index) => {
+        const day = new Date();
+        day.setDate(day.getDate() + index);
+        return day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      }),
+    [],
+  );
+
   return (
-    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
-      {Math.round(value)}
-      {suffix}
-    </motion.span>
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      <button className="rounded-lg bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950">{todayLabel}</button>
+      {dates.slice(1).map((date) => (
+        <button key={date} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200">
+          {date}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MorningCheckIn({
+  bodyweight,
+  onSave,
+  isSaving,
+}: {
+  bodyweight: DashboardData['todayBodyweight'];
+  onSave: (value: number) => void;
+  isSaving: boolean;
+}) {
+  const [weight, setWeight] = useState('');
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const parsed = Number(weight);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    onSave(parsed);
+    setWeight('');
+  };
+
+  return (
+    <AppCard>
+      <CardHeader>
+        <p className="text-sm font-semibold uppercase tracking-wide text-slate-300">Morning check-in</p>
+      </CardHeader>
+      <CardContent>
+        {bodyweight ? (
+          <>
+            <p className="text-sm text-emerald-300">Bodyweight logged</p>
+            <p className="text-2xl font-semibold">{bodyweight.value} kg</p>
+            <p className="text-xs text-slate-400">{new Date(bodyweight.loggedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+          </>
+        ) : (
+          <form className="flex items-center gap-2" onSubmit={submit}>
+            <input
+              type="number"
+              step="0.1"
+              inputMode="decimal"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+              placeholder="Enter today’s bodyweight"
+              value={weight}
+              onChange={(event) => setWeight(event.target.value)}
+            />
+            <button type="submit" className="rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-slate-950" disabled={isSaving}>
+              Save
+            </button>
+          </form>
+        )}
+      </CardContent>
+      {bodyweight ? (
+        <CardFooter>
+          <button className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold">Update</button>
+        </CardFooter>
+      ) : null}
+    </AppCard>
   );
 }
 
 export function DashboardSkeleton() {
   return (
     <div className="space-y-4 p-4">
-      <AppSkeleton className="h-32" />
-      <div className="flex gap-3 overflow-hidden">
-        <AppSkeleton className="h-12 min-w-28 flex-1" />
-        <AppSkeleton className="h-12 min-w-28 flex-1" />
-        <AppSkeleton className="h-12 min-w-28 flex-1" />
-      </div>
+      <AppSkeleton className="h-20" />
+      <AppSkeleton className="h-12" />
       {Array.from({ length: 6 }).map((_, i) => (
         <AppSkeleton key={i} className="h-28" />
       ))}
@@ -48,124 +116,149 @@ export function DashboardSkeleton() {
   );
 }
 
-export function DashboardScreen({ data, caloriesRemaining, proteinRemaining, showPR }: { data: DashboardData; caloriesRemaining: number; proteinRemaining: number; showPR: boolean }) {
-  if (data.isNewUser) {
-    return (
-      <div className="p-4 space-y-4">
-        <AppCard>
-          <p className="text-2xl font-semibold">Welcome 👋</p>
-          <p className="text-sm text-slate-300 mt-2">Start your first workout, set your goal, and log bodyweight to unlock smart coaching.</p>
-        </AppCard>
-        <div className="grid gap-3">
-          {['Start your first workout', 'Set your goal', 'Log your bodyweight'].map((task) => (
-            <AppCard key={task} className="py-5 font-medium">{task}</AppCard>
-          ))}
-        </div>
-      </div>
-    );
-  }
+function getTrendLabel(trend: BodyweightTrend) {
+  if (trend === 'up') return 'Trending up';
+  if (trend === 'down') return 'Trending down';
+  if (trend === 'flat') return 'Stable trend';
+  return 'Insufficient data (need 3 logs in 14 days)';
+}
 
-  const readiness = getReadinessMessage(data);
-
+export function DashboardScreen({
+  data,
+  caloriesRemaining,
+  proteinRemaining,
+  bodyweightTrend,
+  onLogBodyweight,
+  bodyweightSaving,
+}: {
+  data: DashboardData;
+  caloriesRemaining: number;
+  proteinRemaining: number;
+  bodyweightTrend: BodyweightTrend;
+  onLogBodyweight: (value: number) => void;
+  bodyweightSaving: boolean;
+}) {
   return (
     <motion.div className="space-y-4 p-4" initial="hidden" animate="visible" variants={container}>
       <motion.div variants={item}>
-        <AppCard className={`bg-gradient-to-br ${readiness.tone}`}>
-          <p className="text-xl font-semibold">{readiness.title}</p>
-          <p className="text-sm text-slate-200 mt-1">{readiness.subtitle}</p>
+        <AppCard>
+          <CardHeader>
+            <p className="text-2xl font-semibold">Welcome back, {data.firstName} 👋</p>
+            <p className="text-sm text-slate-300">Here’s your plan for today</p>
+          </CardHeader>
+          <CardContent>
+            <DateSelector todayLabel={data.todayDateLabel} />
+          </CardContent>
         </AppCard>
       </motion.div>
 
-      <motion.div variants={item} className="flex gap-3 overflow-x-auto pb-1 snap-x">
-        {['Start Workout', 'Log Weight', 'Log Food', 'View Program'].map((label) => (
-          <button
-            key={label}
-            className="snap-start min-w-[140px] rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold active:scale-[0.98]"
-            onClick={() => navigator.vibrate?.(8)}
-          >
-            {label}
-          </button>
-        ))}
+      <motion.div variants={item}>
+        <MorningCheckIn bodyweight={data.todayBodyweight} onSave={onLogBodyweight} isSaving={bodyweightSaving} />
       </motion.div>
 
       <motion.div variants={item}>
         <AppSection title="Next workout">
           <AppCard>
-            {data.nextWorkout ? (
-              <div className="space-y-2">
-                <p className="text-lg font-semibold">{data.nextWorkout.name}</p>
-                <p className="text-sm text-slate-300">{data.nextWorkout.primaryMuscles.join(' · ')} · {data.nextWorkout.exerciseCount} exercises</p>
-                <p className="text-sm text-slate-400">Last performance: {data.nextWorkout.snapshot}</p>
-                <button className="mt-2 rounded-lg bg-cyan-400 text-slate-950 px-4 py-2 text-sm font-semibold">Start Workout</button>
-              </div>
-            ) : (
-              <p className="text-sm">Build your next session</p>
-            )}
+            <CardHeader>
+              <p className="text-sm uppercase tracking-wide text-slate-300">Queued session</p>
+            </CardHeader>
+            <CardContent>
+              {data.nextWorkout ? (
+                <>
+                  <p className="text-lg font-semibold">{data.nextWorkout.name}</p>
+                  <p className="text-sm text-slate-300">{data.nextWorkout.primaryMuscles.join(' · ')} · {data.nextWorkout.exerciseCount} exercises</p>
+                </>
+              ) : (
+                <p className="text-sm">Build your next session</p>
+              )}
+            </CardContent>
+            <CardFooter>
+              <button className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950">Start Workout</button>
+            </CardFooter>
           </AppCard>
         </AppSection>
       </motion.div>
 
       <motion.div variants={item}>
-        <AppSection title="Muscle balance · 7 days">
-          <AppCard className="space-y-3">
-            {data.muscleVolume7d.map((m) => (
-              <div key={m.muscle} className="space-y-1">
-                <div className="flex justify-between text-xs"><span>{m.muscle}</span><span className={m.status === 'optimal' ? 'text-emerald-300' : m.status === 'undertrained' ? 'text-amber-300' : 'text-rose-300'}>{m.status}</span></div>
-                <ProgressBar value={m.value} />
-              </div>
-            ))}
-          </AppCard>
-        </AppSection>
-      </motion.div>
-
-      <motion.div variants={item}>
-        <AppSection title="Goal progress">
-          <AppCard className="space-y-2">
-            {data.goal?.type === 'cutting' && <p className="text-sm">Weight trend vs target pace: <span className="font-semibold">{data.goal.paceDelta ?? 0} kg/week</span></p>}
-            {data.goal?.type === 'bulking' && <p className="text-sm">Calorie adherence: <span className="font-semibold">{data.goal.adherencePct ?? 0}%</span></p>}
-            {data.goal?.type === 'maintaining' && <p className="text-sm">Consistency score: <span className="font-semibold">{data.goal.consistencyScore ?? 0}/100</span></p>}
-          </AppCard>
-        </AppSection>
-      </motion.div>
-
-      <motion.div variants={item}>
-        <AppSection title="Today's nutrition">
-          <AppCard className="space-y-3">
-            {!data.nutritionToday.hasLoggedFood ? (
-              <p className="text-sm text-slate-300">Start tracking today&apos;s nutrition</p>
-            ) : (
-              <>
-                <div className="space-y-1">
-                  <p className="text-xs text-slate-400">Calories remaining: {caloriesRemaining}</p>
-                  <ProgressBar value={(data.nutritionToday.caloriesConsumed / (data.goal?.dailyCaloriesTarget || 1)) * 100} />
+        <AppSection title="Training status">
+          <AppCard>
+            <CardHeader>
+              <p className="text-sm uppercase tracking-wide text-slate-300">Volume status</p>
+            </CardHeader>
+            <CardContent>
+              {data.volumeStatus.map((m) => (
+                <div key={m.muscle} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span>{m.muscle}</span>
+                    <span className={m.status === 'optimal' ? 'text-emerald-300' : m.status === 'undertrained' ? 'text-amber-300' : 'text-rose-300'}>{m.status}</span>
+                  </div>
+                  <ProgressBar value={m.value} />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-slate-400">Protein remaining: {proteinRemaining}g</p>
-                  <ProgressBar value={(data.nutritionToday.proteinConsumed / (data.goal?.dailyProteinTarget || 1)) * 100} />
-                </div>
-              </>
-            )}
+              ))}
+            </CardContent>
           </AppCard>
         </AppSection>
       </motion.div>
 
       <motion.div variants={item}>
-        <AppCard className="grid grid-cols-3 gap-3">
-          <AppStat label="Current streak" value={<CountUp value={data.streakDays} />} />
-          <AppStat label="Workouts this week" value={<CountUp value={data.workoutsThisWeek} />} />
-          <AppStat label="Adherence" value={<CountUp value={data.adherencePct} suffix="%" />} />
+        <AppCard>
+          <CardHeader>
+            <p className="text-sm uppercase tracking-wide text-slate-300">Bodyweight trend</p>
+          </CardHeader>
+          <CardContent>
+            <p className="text-lg font-semibold">{getTrendLabel(bodyweightTrend)}</p>
+          </CardContent>
         </AppCard>
       </motion.div>
 
-      {showPR && data.recentPR ? (
-        <motion.div variants={item}>
-          <AppCard className="bg-gradient-to-r from-violet-500/25 to-fuchsia-500/25 border-violet-300/20">
-            <p className="text-xs uppercase tracking-wide text-violet-200">New PR</p>
-            <p className="text-lg font-semibold mt-1">{data.recentPR.exercise}</p>
-            <p className="text-sm text-slate-100">{data.recentPR.weight}kg × {data.recentPR.reps} reps</p>
-          </AppCard>
-        </motion.div>
-      ) : null}
+      <motion.div variants={item}>
+        <AppCard>
+          <CardHeader>
+            <p className="text-sm uppercase tracking-wide text-slate-300">Weak point</p>
+          </CardHeader>
+          <CardContent>
+            {data.weakPoint ? (
+              <>
+                <p className="text-lg font-semibold">{data.weakPoint.muscleGroup}</p>
+                <p className="text-sm text-slate-300">{data.weakPoint.reason}</p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-300">No weak points detected this week.</p>
+            )}
+          </CardContent>
+          <CardFooter>
+            <p className="text-xs text-slate-400">{data.weakPoint?.recommendation || 'Keep consistency high to unlock recommendations.'}</p>
+          </CardFooter>
+        </AppCard>
+      </motion.div>
+
+      <motion.div variants={item}>
+        <AppCard>
+          <CardHeader>
+            <p className="text-sm uppercase tracking-wide text-slate-300">Today&apos;s nutrition</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400">Calories remaining: {caloriesRemaining}</p>
+              <ProgressBar value={(data.nutritionProgress.caloriesConsumed / (data.nutritionProgress.caloriesTarget || 1)) * 100} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400">Protein remaining: {proteinRemaining}g</p>
+              <ProgressBar value={(data.nutritionProgress.proteinConsumed / (data.nutritionProgress.proteinTarget || 1)) * 100} />
+            </div>
+          </CardContent>
+        </AppCard>
+      </motion.div>
+
+      <motion.div variants={item}>
+        <AppCard>
+          <CardContent className="grid grid-cols-3 gap-3">
+            <AppStat label="Current streak" value={data.streak.current} />
+            <AppStat label="Longest streak" value={data.streak.longest} />
+            <AppStat label="Adherence" value={`${data.adherenceScore}%`} />
+          </CardContent>
+        </AppCard>
+      </motion.div>
     </motion.div>
   );
 }

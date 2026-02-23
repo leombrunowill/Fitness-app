@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getBodyweightTrend, type BodyweightTrend } from '../utils/getBodyweightTrend';
+import { getStreakStats } from '../utils/getAdherenceDays';
 
-export type ReadinessState = 'good_to_train' | 'recovery_needed' | 'behind_on_protein';
 export type GoalType = 'cutting' | 'bulking' | 'maintaining';
 
 type WorkoutSummary = {
@@ -14,48 +15,73 @@ type WorkoutSummary = {
   snapshot: string;
 };
 
-type PRSummary = {
-  exercise: string;
-  weight: number;
-  reps: number;
-  happenedAt: string;
+type WeakPointSummary = {
+  muscleGroup: string;
+  reason: string;
+  recommendation: string;
+};
+
+type BodyweightLog = {
+  value: number;
+  loggedAt: string;
 };
 
 export type DashboardData = {
-  todayBodyweight: number | null;
-  streakDays: number;
-  workoutsThisWeek: number;
-  adherencePct: number;
-  readiness: ReadinessState;
-  readinessContext?: string;
+  firstName: string;
+  adherenceDays: Array<{ date: string; completedWorkout: boolean; bodyweightLogged: boolean; calorieTargetReached: boolean }>;
+  streak: {
+    current: number;
+    longest: number;
+  };
+  adherenceScore: number;
   nextWorkout: WorkoutSummary | null;
-  lastWorkout: WorkoutSummary | null;
-  muscleVolume7d: Array<{ muscle: string; value: number; status: 'undertrained' | 'optimal' | 'overreached' }>;
-  goal: {
-    type: GoalType;
-    name: string;
-    dailyCaloriesTarget: number;
-    dailyProteinTarget: number;
-    paceDelta?: number;
-    consistencyScore?: number;
-    adherencePct?: number;
-  } | null;
-  nutritionToday: {
+  volumeStatus: Array<{ muscle: string; value: number; status: 'undertrained' | 'optimal' | 'overreached' }>;
+  weakPoint: WeakPointSummary | null;
+  nutritionProgress: {
     caloriesConsumed: number;
     proteinConsumed: number;
-    hasLoggedFood: boolean;
+    caloriesTarget: number;
+    proteinTarget: number;
+    calorieTargetReached: boolean;
   };
-  recentPR: PRSummary | null;
-  isNewUser: boolean;
+  todayBodyweight: BodyweightLog | null;
+  bodyweightLogs14d: BodyweightLog[];
+  todayDateLabel: string;
 };
 
 const DASHBOARD_QUERY_KEY = ['dashboard'] as const;
 
 async function fetchDashboardData(): Promise<DashboardData> {
   const supabase = createClientComponentClient();
-  const { data, error } = await supabase.rpc('dashboard_v2_snapshot');
+  const { data, error } = await supabase.rpc('dashboard_v3_snapshot');
+
   if (error) throw error;
-  return data as DashboardData;
+
+  const locale = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
+  const fallback = (data || {}) as Partial<DashboardData>;
+
+  const adherenceDays = fallback.adherenceDays || [];
+  const streakStats = getStreakStats(adherenceDays, locale);
+
+  return {
+    firstName: fallback.firstName || 'Athlete',
+    adherenceDays,
+    streak: fallback.streak || { current: streakStats.currentStreak, longest: streakStats.longestStreak },
+    adherenceScore: fallback.adherenceScore || 0,
+    nextWorkout: fallback.nextWorkout || null,
+    volumeStatus: fallback.volumeStatus || [],
+    weakPoint: fallback.weakPoint || null,
+    nutritionProgress: fallback.nutritionProgress || {
+      caloriesConsumed: 0,
+      proteinConsumed: 0,
+      caloriesTarget: 0,
+      proteinTarget: 0,
+      calorieTargetReached: false,
+    },
+    todayBodyweight: fallback.todayBodyweight || null,
+    bodyweightLogs14d: fallback.bodyweightLogs14d || [],
+    todayDateLabel: fallback.todayDateLabel || new Date().toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' }),
+  };
 }
 
 export function useDashboardData() {
@@ -71,48 +97,68 @@ export function useDashboardData() {
 
   const selectors = useMemo(() => {
     const data = query.data;
+
     return {
       data,
-      caloriesRemaining: data?.goal
-        ? Math.max(data.goal.dailyCaloriesTarget - data.nutritionToday.caloriesConsumed, 0)
-        : 0,
-      proteinRemaining: data?.goal
-        ? Math.max(data.goal.dailyProteinTarget - data.nutritionToday.proteinConsumed, 0)
-        : 0,
-      showPR: !!data?.recentPR && Date.now() - new Date(data.recentPR.happenedAt).getTime() <= 3 * 24 * 60 * 60 * 1000,
+      bodyweightTrend: data ? getBodyweightTrend(data.bodyweightLogs14d) : ('insufficient_data' as BodyweightTrend),
+      caloriesRemaining: data ? Math.max(data.nutritionProgress.caloriesTarget - data.nutritionProgress.caloriesConsumed, 0) : 0,
+      proteinRemaining: data ? Math.max(data.nutritionProgress.proteinTarget - data.nutritionProgress.proteinConsumed, 0) : 0,
     };
   }, [query.data]);
 
-  const optimisticNutritionLog = useMutation({
-    mutationFn: async (delta: { calories: number; protein: number }) => delta,
-    onMutate: async (delta) => {
+  const invalidateDashboard = useCallback(() => queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY }), [queryClient]);
+
+  const logBodyweight = useMutation({
+    mutationFn: async (value: number) => {
+      const supabase = createClientComponentClient();
+      const { error } = await supabase.from('bodyweight_logs').insert({ weight: value });
+      if (error) throw error;
+      return value;
+    },
+    onMutate: async (value) => {
       await queryClient.cancelQueries({ queryKey: DASHBOARD_QUERY_KEY });
       const previous = queryClient.getQueryData<DashboardData>(DASHBOARD_QUERY_KEY);
+      const now = new Date().toISOString();
+
       queryClient.setQueryData<DashboardData>(DASHBOARD_QUERY_KEY, (current) => {
         if (!current) return current;
         return {
           ...current,
-          nutritionToday: {
-            ...current.nutritionToday,
-            hasLoggedFood: true,
-            caloriesConsumed: current.nutritionToday.caloriesConsumed + delta.calories,
-            proteinConsumed: current.nutritionToday.proteinConsumed + delta.protein,
-          },
+          todayBodyweight: { value, loggedAt: now },
+          bodyweightLogs14d: [...current.bodyweightLogs14d, { value, loggedAt: now }],
         };
       });
+
       return { previous };
     },
-    onError: (_error, _delta, context) => {
+    onError: (_error, _vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData(DASHBOARD_QUERY_KEY, context.previous);
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
-    },
+    onSettled: invalidateDashboard,
   });
 
-  return { ...query, ...selectors, optimisticNutritionLog };
+  const onWorkoutLogged = () => invalidateDashboard();
+  const onNutritionLogged = () => invalidateDashboard();
+
+  useEffect(() => {
+    const handleWorkout = () => invalidateDashboard();
+    const handleWeight = () => invalidateDashboard();
+    const handleNutrition = () => invalidateDashboard();
+
+    window.addEventListener('fitness:new-workout', handleWorkout);
+    window.addEventListener('fitness:new-weight', handleWeight);
+    window.addEventListener('fitness:nutrition-log', handleNutrition);
+
+    return () => {
+      window.removeEventListener('fitness:new-workout', handleWorkout);
+      window.removeEventListener('fitness:new-weight', handleWeight);
+      window.removeEventListener('fitness:nutrition-log', handleNutrition);
+    };
+  }, [invalidateDashboard]);
+
+  return { ...query, ...selectors, logBodyweight, onWorkoutLogged, onNutritionLogged };
 }
 
 export { DASHBOARD_QUERY_KEY };
