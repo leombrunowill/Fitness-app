@@ -51,6 +51,7 @@ export function DashboardScreen() {
           queueLength={queueLength}
           lastRecomputeAt={lastRecomputeAt}
           userId={userId}
+          isNameLoading={isFetching}
         />
       )}
     </AppPage>
