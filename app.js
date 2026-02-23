@@ -856,7 +856,43 @@ var cloudSyncEnabled = true;
   var cloudHydrating = false;
   var stateUpdatedAt = ld("il_state_updated_at", 0) || 0;
    var authInitAttempts = 0;
-   var settingsSaveState = { saving:false, ok:false, error:"" };
+  var settingsSaveState = { saving:false, ok:false, error:"" };
+  var asyncUi = {
+    cloud: { loading:false, error:"" },
+    social: { loading:false, error:"" }
+  };
+
+  function appSkeletonBlock(height) {
+    return '<div class="AppSkeleton" aria-hidden="true" style="height:'+height+'px;width:100%"></div>';
+  }
+
+  function renderAppSkeletonCard(title, blocks) {
+    var html = '<div class="card card-elevated" style="min-height:220px"><div style="font-size:13px;font-weight:900;margin-bottom:10px">'+esc(title)+'</div>';
+    (blocks || [44,44,120]).forEach(function(h, idx){
+      html += '<div style="margin-bottom:'+(idx === blocks.length - 1 ? 0 : 8)+'px">'+appSkeletonBlock(h)+'</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderEmptyState(opts) {
+    opts = opts || {};
+    var action = opts.actionId ? '<button class="btn bp" id="'+esc(opts.actionId)+'" style="margin-top:10px">'+esc(opts.actionLabel || 'Take action')+'</button>' : '';
+    return '<div class="card card-elevated" style="min-height:200px;display:flex;align-items:center;justify-content:center;text-align:center">' +
+      '<div><div style="font-size:36px;margin-bottom:8px">'+esc(opts.icon || '🗂️')+'</div>' +
+      '<div style="font-size:16px;font-weight:900">'+esc(opts.title || 'Nothing here yet.')+'</div>' +
+      '<div style="font-size:11px;color:var(--mt);margin-top:6px">'+esc(opts.description || 'Add your first item to get started.')+'</div>' +
+      action + '</div></div>';
+  }
+
+  function renderErrorState(opts) {
+    opts = opts || {};
+    return '<div class="card card-elevated" style="min-height:180px;display:flex;align-items:center;justify-content:center;text-align:center">' +
+      '<div><div style="font-size:30px;margin-bottom:8px">⚠️</div>' +
+      '<div style="font-size:14px;font-weight:900">'+esc(opts.title || 'Something went wrong')+'</div>' +
+      '<div style="font-size:11px;color:var(--mt);margin-top:6px">'+esc(opts.description || 'Please try again.')+'</div>' +
+      '<button class="btn bs" id="'+esc(opts.retryId || 'retry-action')+'" style="margin-top:10px">Retry</button></div></div>';
+  }
    
   function initAuth() {
     if (!window.supabase) {
@@ -1248,6 +1284,9 @@ function normalizeWeightUnit(unit) {
   function cloudLoad() {
     if (!cloudSyncEnabled) return Promise.resolve();
     if (!sb || !authSession || !authSession.user) return Promise.resolve();
+    asyncUi.cloud.loading = true;
+    asyncUi.cloud.error = "";
+    render();
     return sb.from("app_state")
       .select("*")
       .eq("user_id", authSession.user.id)
@@ -1266,7 +1305,11 @@ function normalizeWeightUnit(unit) {
         return cloudUpsertNow();
       })
       .catch(function(err) {
-        authMsg = "Cloud load failed: " + ((err && err.message) ? err.message : "Unknown error");
+        asyncUi.cloud.error = "Cloud load failed: " + ((err && err.message) ? err.message : "Unknown error");
+        authMsg = asyncUi.cloud.error;
+        render();
+      }).finally(function(){
+        asyncUi.cloud.loading = false;
         render();
       });
   }
@@ -1371,6 +1414,9 @@ var cols = ["id", "display_name"];
 
   function loadSocialGraph() {
     if (!socialReady()) return Promise.resolve();
+    asyncUi.social.loading = true;
+    asyncUi.social.error = "";
+    render();
     var uid = myUserId();
     return ensureSocialProfile().then(function(){
       return Promise.all([
@@ -1477,7 +1523,11 @@ var friendIds = [];
         socialSupportsBio = false;
         return loadSocialGraph();
       }
-      authMsg = "Social load failed: " + ((err && err.message) ? err.message : "Set up social tables in Supabase.");
+      asyncUi.social.error = "Social load failed: " + ((err && err.message) ? err.message : "Set up social tables in Supabase.");
+      authMsg = asyncUi.social.error;
+    }).finally(function(){
+      asyncUi.social.loading = false;
+      render();
     });
   }
    
@@ -2974,7 +3024,13 @@ var weightInfo = getRecentWeightTrendInfo();
         h += '<button class="btn bs" id="edit-finished-workout" style="margin-top:10px;width:100%">✏️ Edit finished workout</button>';
         h += '</div>';
       } else if (!day.length) {
-        h += '<div class="empty"><div style="font-size:40px;margin-bottom:8px">🏋️</div>No exercises logged yet.</div>';
+        h += renderEmptyState({
+          icon: '🏋️',
+          title: 'Your journey starts here.',
+          description: 'No workouts logged for this day yet.',
+          actionId: 'start-first-workout',
+          actionLabel: 'Start your first workout'
+        });
       } else {
         day.forEach(function(ex, idx){
  var lastSession = getLastExerciseSession(ex.exercise, selDate);
@@ -3264,7 +3320,13 @@ var adherence = weeklyAdherence();
       h += '<div class="card card-elevated">';
        h += '<div style="font-size:13px;font-weight:900;margin-bottom:8px">Food Log</div>';
       if (!dayData.items.length) {
-        h += '<div style="font-size:11px;color:var(--mt)">No food logged today.</div>';
+        h += renderEmptyState({
+          icon: '🥗',
+          title: 'Track your first meal.',
+          description: 'Nutrition insights will appear after your first log entry.',
+          actionId: 'track-first-meal',
+          actionLabel: 'Log your first meal'
+        });
       } else {
         dayData.items.slice().sort(function(a,b){ return (+b.at||0)-(+a.at||0); }).forEach(function(it){
           h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--c2)">';
@@ -3320,6 +3382,16 @@ var adherence = weeklyAdherence();
       h += '</div>';
       h += '</div>';
 
+      if (!(RLIB || []).length) {
+        h += renderEmptyState({
+          icon: '🧩',
+          title: 'Build your first routine.',
+          description: 'Create a routine to assign workouts to your week.',
+          actionId: 'create-first-routine',
+          actionLabel: 'Create routine'
+        });
+      }
+
        (RLIB || []).forEach(function(r, idx){
         var open = !!planAccordionOpen[r.id];
         h += '<div class="routine-acc'+(open ? ' open' : '')+'">';
@@ -3365,6 +3437,16 @@ var adherence = weeklyAdherence();
       }
 
             if (view === "social") {
+      if (asyncUi.social.loading || asyncUi.cloud.loading) {
+        h += renderAppSkeletonCard('Loading social', [34, 92, 42, 180]);
+        h += renderAppSkeletonCard('Loading feed', [40, 80, 80]);
+      } else if (asyncUi.social.error) {
+        h += renderErrorState({
+          title: 'Unable to load social updates',
+          description: asyncUi.social.error,
+          retryId: 'retry-social-load'
+        });
+      } else {
        var socialMe = mySocialSnapshot();
       var lift = SOC.leaderboardLift || "Bench Press";
       var liftChoices = ["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row"];
@@ -3470,7 +3552,13 @@ h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       h += '<button class="btn bs" id="share-pr-post" style="padding:8px 10px">Share PR</button>';
       h += '</div>';
        if (!(SOC.feed || []).length) {
-h += '<div style="font-size:11px;color:var(--mt)">No shared updates yet. Share your workout, meals, or PRs to start your feed.</div>';      
+        h += renderEmptyState({
+          icon: '📰',
+          title: 'Your feed is quiet.',
+          description: 'Share your workout, meals, or PRs to start your feed.',
+          actionId: 'share-first-update',
+          actionLabel: 'Share your first update'
+        });
        } else {
         (SOC.feed || []).slice(0, 16).forEach(function(item){
            h += '<div class="card" style="margin-bottom:6px;padding:10px">';
@@ -3481,6 +3569,7 @@ h += '<div style="font-size:11px;font-weight:800">'+esc(item.from || 'Athlete')+
         });
       }
       h += '</div>';
+      }
                      }
 
       if (view === "profile") {
@@ -3934,7 +4023,7 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
    document.querySelectorAll('[data-act="add-ex"]').forEach(function(btn){
       btn.onclick = openAddExerciseModal;
     });
-     var startWorkoutBtn = document.getElementById("start-workout-btn");
+    var startWorkoutBtn = document.getElementById("start-workout-btn");
     if (startWorkoutBtn) startWorkoutBtn.onclick = function(){
       ensureDay(selDate);
       if (WFIN[selDate]) {
@@ -3944,6 +4033,12 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
         render();
         return;
       }
+      openAddExerciseModal();
+    };
+
+    var firstWorkoutBtn = document.getElementById("start-first-workout");
+    if (firstWorkoutBtn) firstWorkoutBtn.onclick = function(){
+      ensureDay(selDate);
       openAddExerciseModal();
     };
 
@@ -4176,6 +4271,9 @@ if (!calc) return alert("Enter an amount.");
      
 var newRoutineBtn = document.getElementById("new-routine-btn");
     if (newRoutineBtn) newRoutineBtn.onclick = function(){ openRoutineBuilder(); };
+
+    var createFirstRoutineBtn = document.getElementById("create-first-routine");
+    if (createFirstRoutineBtn) createFirstRoutineBtn.onclick = function(){ openRoutineBuilder(); };
 
     var saveRoutineBtn = document.getElementById("save-routine-from-day");
     if (saveRoutineBtn) saveRoutineBtn.onclick = function(){ saveDayAsRoutine(selDate); };
@@ -4414,6 +4512,9 @@ var saveSocialName = document.getElementById("save-social-name");
       });
     };
 
+    var retrySocialLoadBtn = document.getElementById("retry-social-load");
+    if (retrySocialLoadBtn) retrySocialLoadBtn.onclick = function(){ loadSocialGraph(); };
+
      document.querySelectorAll(".accept-request").forEach(function(btn){
       btn.onclick = function(){
         var i = parseInt(this.getAttribute("data-i"), 10);
@@ -4569,11 +4670,17 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       createPostAndRefresh("profile", txt, tod()).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share profile."); });
     };
 
-  var shareWorkoutPost = document.getElementById("share-workout-post");
+    var shareWorkoutPost = document.getElementById("share-workout-post");
     if (shareWorkoutPost) shareWorkoutPost.onclick = function(){
       var txt = createPostText("workout");
       if (!txt) return alert("Log a workout for the selected day first.");
       createPostAndRefresh("workout", txt, selDate).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share workout."); });
+    };
+
+    var shareFirstUpdateBtn = document.getElementById("share-first-update");
+    if (shareFirstUpdateBtn) shareFirstUpdateBtn.onclick = function(){
+      var btn = document.getElementById("share-workout-post") || document.getElementById("share-social-summary");
+      if (btn) btn.click();
     };
 
     var shareMealPost = document.getElementById("share-meal-post");
@@ -4581,6 +4688,16 @@ var declineQuery = sb.from("friend_requests").update({ status: "declined" }).eq(
       var txt = createPostText("meal");
       if (!txt) return alert("Log food for the selected day first.");
       createPostAndRefresh("meal", txt, selDate).then(function(){ saveAll(); render(); }).catch(function(err){ alert((err && err.message) ? err.message : "Could not share meal."); });
+    };
+
+    var trackFirstMealBtn = document.getElementById("track-first-meal");
+    if (trackFirstMealBtn) trackFirstMealBtn.onclick = function(){
+      var foodInput = document.getElementById("food-name");
+      if (foodInput) {
+        foodInput.focus();
+        return;
+      }
+      showToast('Use Quick Add or API search to log your first meal.');
     };
 
     var sharePrPost = document.getElementById("share-pr-post");

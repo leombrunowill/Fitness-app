@@ -9,6 +9,20 @@ import { fetchDashboardData, upsertProfileSetup } from '../supabase/queries.js';
 
 function fmt1(v) { return Math.round((+v || 0) * 10) / 10; }
 
+function appSkeleton(height) {
+  return `<div class="AppSkeleton" aria-hidden="true" style="height:${height}px;width:100%"></div>`;
+}
+
+function dashboardSkeleton() {
+  return `<section class="card dash-card" style="min-height:180px">${appSkeleton(26)}<div style="height:8px"></div>${appSkeleton(78)}<div style="height:8px"></div>${appSkeleton(26)}</section>` +
+    `<section class="card dash-card" style="min-height:160px">${appSkeleton(24)}<div style="height:8px"></div>${appSkeleton(110)}</section>`;
+}
+
+function dashboardStateCard(opts) {
+  const action = opts.actionId ? `<button class="btn bp" id="${opts.actionId}" style="margin-top:10px">${opts.actionLabel || 'Take action'}</button>` : '';
+  return `<section class="card dash-card" style="min-height:220px;display:flex;align-items:center;justify-content:center;text-align:center"><div><div style="font-size:34px;margin-bottom:8px">${opts.icon || '📊'}</div><h2 class="dash-title">${opts.title || 'Nothing to show'}</h2><div style="font-size:11px;color:var(--mt)">${opts.description || ''}</div>${action}</div></section>`;
+}
+
 function isoDaysAgo(daysBack) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -122,14 +136,43 @@ export async function initDashboard(ctx) {
   const mount = document.getElementById('dashboard-v2');
   if (!mount) return;
 
+  mount.innerHTML = dashboardSkeleton();
+
   let analytics = ctx.analytics || {};
+  let loadError = null;
   try {
     const weekStartIso = isoDaysAgo(6);
     const streakStartIso = isoDaysAgo(179);
     const remote = await fetchDashboardData(weekStartIso, streakStartIso);
     analytics = analyticsFromRemote(remote, analytics, weekStartIso);
   } catch (_err) {
-    // graceful local fallback
+    loadError = _err;
+  }
+
+  if (loadError) {
+    mount.innerHTML = dashboardStateCard({
+      icon: '⚠️',
+      title: 'Could not load dashboard',
+      description: 'There was a problem loading your cloud stats.',
+      actionId: 'retry-dashboard-load',
+      actionLabel: 'Retry'
+    });
+    const retryBtn = document.getElementById('retry-dashboard-load');
+    if (retryBtn) retryBtn.onclick = () => initDashboard(ctx);
+    return;
+  }
+
+  if (!Array.isArray(analytics.workoutDates) || !analytics.workoutDates.length) {
+    mount.innerHTML = dashboardStateCard({
+      icon: '🏋️',
+      title: 'Your journey starts here.',
+      description: 'Log your first workout to unlock momentum insights.',
+      actionId: 'start-first-workout-dashboard',
+      actionLabel: 'Start your first workout'
+    });
+    const firstWorkoutBtn = document.getElementById('start-first-workout-dashboard');
+    if (firstWorkoutBtn) firstWorkoutBtn.onclick = () => ctx.onQuickStart && ctx.onQuickStart();
+    return;
   }
 
   const insights = initTodayFocus(analytics);
