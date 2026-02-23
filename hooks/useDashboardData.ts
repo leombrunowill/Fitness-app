@@ -131,22 +131,6 @@ export function useDashboardData() {
 
   const logNutrition = useMutation({
     mutationFn: logNutritionEntry,
-    onMutate: async (input: NutritionEntryInput) => {
-      await queryClient.cancelQueries({ queryKey: DASHBOARD_QUERY_KEY });
-      const previous = queryClient.getQueryData<DashboardData>(DASHBOARD_QUERY_KEY);
-      updateCache((current) =>
-        recomputeDashboard({
-          ...current,
-          nutritionProgress: {
-            ...current.nutritionProgress,
-            caloriesConsumed: current.nutritionProgress.caloriesConsumed + input.calories,
-            proteinConsumed: current.nutritionProgress.proteinConsumed + input.protein,
-            calorieTargetReached: current.nutritionProgress.caloriesConsumed + input.calories >= current.nutritionProgress.caloriesTarget,
-          },
-        }),
-      );
-      return { previous };
-    },
     ...baseMutationHandlers,
   });
 

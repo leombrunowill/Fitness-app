@@ -1,6 +1,7 @@
 'use client';
 
 import { getSupabaseBrowserClient } from '@/supabase/browserClient';
+import { logNutritionEntry as strictLogNutritionEntry } from '@/data/nutrition';
 
 export type DashboardData = {
   firstName: string;
@@ -321,41 +322,12 @@ export async function logWorkoutEntry(input: WorkoutEntryInput) {
 }
 
 export async function logNutritionEntry(input: NutritionEntryInput) {
-  const { supabase, userId } = await getUserId();
-    const localDate = new Date().toLocaleDateString('en-CA');
-  const payload = {
-    user_id: userId,
+  return strictLogNutritionEntry({
     food_name: input.foodName?.trim() || 'Quick meal',
-       calories: Number(input.calories || 0),
+    calories: Number(input.calories || 0),
     protein: Number(input.protein || 0),
     carbs: Number(input.carbs || 0),
     fat: Number(input.fat || 0),
     meal_type: input.mealType || 'snack',
- local_date: localDate,
-    created_at: new Date().toISOString(),
-  };
-
-  if (!userId) {
-    const current = readLocalDashboard();
-    const updated = recomputeDashboard({
-      ...current,
-      nutritionProgress: {
-        ...current.nutritionProgress,
-        caloriesConsumed: current.nutritionProgress.caloriesConsumed + Number(payload.calories || 0),
-        proteinConsumed: current.nutritionProgress.proteinConsumed + Number(payload.protein || 0),
-        calorieTargetReached: current.nutritionProgress.caloriesConsumed + Number(payload.calories || 0) >= current.nutritionProgress.caloriesTarget,
-      },
-    });
-    writeLocalDashboard(updated);
-    return payload;
-  }
-
-const { data: userRes, error: userErr } = await supabase.auth.getUser();
-  const user = userRes?.user;
-  if (userErr || !user) throw new Error('Not signed in');
-
-  const { error } = await supabase.from('nutrition_logs').insert({ ...payload, user_id: user.id });
-  if (error) throw error;
-
-  return payload;
+  });
 }
