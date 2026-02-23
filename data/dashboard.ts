@@ -1,7 +1,7 @@
 'use client';
 
 import { getSupabaseBrowserClient } from '@/supabase/browserClient';
-import { logNutritionEntry as strictLogNutritionEntry } from '@/data/nutrition';
+import { logNutritionEntry as strictLogNutritionEntry, type MealType } from '@/data/nutrition';
 
 export type DashboardData = {
   firstName: string;
@@ -35,7 +35,7 @@ export type DashboardData = {
 };
 
 export type WorkoutEntryInput = { name?: string; muscleGroup?: string; reps?: number };
-export type NutritionEntryInput = { foodName?: string; calories: number; protein: number; carbs?: number; fat?: number; mealType?: string };
+export type NutritionEntryInput = { foodName?: string; calories: number; protein: number; carbs?: number; fat?: number; mealType?: MealType | null };
 
 type WorkoutRow = { id: string; name: string; started_at: string; completed_at: string | null };
 type SetRow = { id: string; workout_id: string; muscle_group: string | null; secondary_muscle_group: string | null; secondary_multiplier: number | null; reps: number | null; weight: number | null; created_at: string };
@@ -328,6 +328,6 @@ export async function logNutritionEntry(input: NutritionEntryInput) {
     protein: Number(input.protein || 0),
     carbs: Number(input.carbs || 0),
     fat: Number(input.fat || 0),
-    meal_type: input.mealType || 'snack',
+    meal_type: input.mealType ?? 'snack',
   });
 }
