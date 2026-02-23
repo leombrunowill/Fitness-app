@@ -15,6 +15,8 @@
     fadeApplied: false
   };
 
+       var headerFxBound = false;
+     
   function setAppHydrating(isHydrating) {
     var body = document.body;
     if (!body) return;
@@ -2819,6 +2821,40 @@ note: (bw ? "Auto-targets update from 14-day weight trend + activity." : "Log bo
     });
   }
 
+       function brandLogoSvg(variant) {
+    var accent = '#ff6a2a';
+    var steelA = '#f8fafc';
+    var steelB = '#8b95a7';
+    var logos = {
+      skullDumbbell: '<svg viewBox="0 0 64 64" role="img" aria-label="Iron Log skull and dumbbell"><defs><linearGradient id="steel-grad-a" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+steelA+'"/><stop offset="100%" stop-color="'+steelB+'"/></linearGradient></defs><rect x="1" y="1" width="62" height="62" rx="16" fill="#06090f" stroke="rgba(255,255,255,.16)"/><g fill="none" stroke="url(#steel-grad-a)" stroke-width="2.2" stroke-linecap="round"><path d="M10 29h8"/><path d="M46 29h8"/><path d="M18 24h4v10h-4z"/><path d="M42 24h4v10h-4z"/><path d="M22 22h4v14h-4z"/><path d="M38 22h4v14h-4z"/><path d="M26 29h12"/></g><path d="M32 19c6.1 0 10 3.9 10 8.9 0 4.1-2.4 7-6.1 8.2v4.1H28.1v-4.1c-3.6-1.2-6.1-4.1-6.1-8.2 0-5 3.9-8.9 10-8.9z" fill="url(#steel-grad-a)"/><path d="M27.4 42.5h9.2v3.2h-9.2z" fill="'+accent+'"/><circle cx="28.2" cy="28.4" r="1.3" fill="#06090f"/><circle cx="35.8" cy="28.4" r="1.3" fill="#06090f"/></svg>',
+      fistBar: '<svg viewBox="0 0 64 64" role="img" aria-label="Iron Log fist and barbell"><defs><linearGradient id="steel-grad-b" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+steelA+'"/><stop offset="100%" stop-color="'+steelB+'"/></linearGradient></defs><rect x="1" y="1" width="62" height="62" rx="16" fill="#06090f" stroke="rgba(255,255,255,.16)"/><g fill="none" stroke="url(#steel-grad-b)" stroke-width="2.2" stroke-linecap="round"><path d="M8 34h11"/><path d="M45 34h11"/><path d="M19 28h4v12h-4z"/><path d="M23 26h4v16h-4z"/><path d="M37 26h4v16h-4z"/><path d="M41 28h4v12h-4z"/><path d="M27 34h10"/></g><path d="M25 22.5h14c1.8 0 3.1 1.4 3.1 3.1v6.6H21.9v-6.6c0-1.8 1.3-3.1 3.1-3.1z" fill="url(#steel-grad-b)"/><path d="M24 32h16v8.8c0 1.8-1.4 3.2-3.2 3.2H27.2c-1.8 0-3.2-1.4-3.2-3.2z" fill="url(#steel-grad-b)"/><path d="M31 24.6h2v7.4h-2z" fill="#06090f"/><path d="M28 40.5h8v3.4h-8z" fill="'+accent+'"/></svg>',
+      logShield: '<svg viewBox="0 0 64 64" role="img" aria-label="Iron Log notebook shield"><defs><linearGradient id="steel-grad-c" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+steelA+'"/><stop offset="100%" stop-color="'+steelB+'"/></linearGradient></defs><rect x="1" y="1" width="62" height="62" rx="16" fill="#06090f" stroke="rgba(255,255,255,.16)"/><path d="M32 9l17 6v11.5c0 11-6.4 19.2-17 27.5C21.4 45.7 15 37.5 15 26.5V15z" fill="#0a0f17" stroke="rgba(255,255,255,.14)" stroke-width="1.6"/><rect x="22" y="18" width="20" height="22" rx="3.5" fill="url(#steel-grad-c)"/><path d="M24.8 21.6h14.5" stroke="#0a0f17" stroke-width="1.8"/><path d="M24.8 26.2h14.5" stroke="#0a0f17" stroke-width="1.8"/><path d="M24.8 30.8h8.2" stroke="#0a0f17" stroke-width="1.8"/><path d="M24.8 35.4h11.1" stroke="#0a0f17" stroke-width="1.8"/><path d="M35.7 27.9l3.2 3.1 5-5.5" fill="none" stroke="'+accent+'" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 46h12v3.3H26z" fill="'+accent+'"/></svg>'
+    };
+    return logos[variant] || logos.logShield;
+  }
+
+  function updateHeaderUI(firstName) {
+    var nameEl = document.getElementById('hdr-name');
+    if (nameEl) {
+      var hasName = !!(firstName && String(firstName).trim());
+      nameEl.textContent = hasName ? firstName : 'Athlete';
+      nameEl.classList.toggle('hdr-name-skeleton', !hasName);
+    }
+    var dateMain = document.getElementById('hdr-date-main');
+    var dateSub = document.getElementById('hdr-date-sub');
+    if (dateMain) dateMain.textContent = fmtD(selDate);
+    if (dateSub) dateSub.textContent = (selDate === tod() ? 'Today' : selDate);
+    var dateRow = document.getElementById('hdr-date-row');
+    if (dateRow) {
+      var showDateNav = (view !== 'social' && view !== 'profile');
+      dateRow.style.display = showDateNav ? 'flex' : 'none';
+    }
+    var logo = document.getElementById('logo-mark');
+    if (logo && !logo.innerHTML) {
+      logo.innerHTML = brandLogoSvg('logShield');
+      logo.setAttribute('data-logo-variants', 'logShield,skullDumbbell,fistBar');
+    }
+  }
   function showModal(html) {
     var el = document.getElementById("mover");
     if (!el) return;
@@ -3017,11 +3053,10 @@ var nav = document.querySelector(".bnav");
     
 var h = "";
     if (view === "home") {
-      var userDisplayName = ((USER && USER.name) || (SOC && SOC.profileName) || "").trim();
-      var emailPrefix = ((USER && USER.email) ? String(USER.email).split("@")[0] : "").trim();
-      var firstName = (userDisplayName ? userDisplayName.split(/\s+/)[0] : "") || emailPrefix || "there";
-      h += '<section class="card" style="margin-bottom:8px"><div style="font-size:28px;font-weight:900;line-height:1.2">Welcome back, '+esc(firstName)+' 👋</div></section>';
-    }
+        var userDisplayName = ((USER && USER.name) || (SOC && SOC.profileName) || "").trim();
+    var emailPrefix = ((USER && USER.email) ? String(USER.email).split("@")[0] : "").trim();
+    var firstName = (userDisplayName ? userDisplayName.split(/\s+/)[0] : "") || emailPrefix || "";
+    updateHeaderUI(firstName);
     h += renderAuthStatusCard();
 
     if (!loggedIn) {
@@ -3030,20 +3065,6 @@ var h = "";
       h += '<div style="font-size:11px;color:var(--mt);margin-top:4px">You can log workouts and navigate all screens without signing in. Sign in anytime for cloud sync and social features.</div>';
       h += '<div style="margin-top:8px">';
       h += '<button class="btn bs" id="open-login-screen" style="padding:6px 10px;font-size:11px">Sign in / Create account</button>';
-      h += '</div></div>';
-    }
-
-    var showDateNav = (view !== "social" && view !== "profile");
-    if (showDateNav) {
-      h += '<div class="card" style="padding:8px">';
-      h += '<div class="row" style="justify-content:space-between;align-items:center">';
-      h += '<button class="pm" id="d-prev">←</button>';
-      h += '<div style="text-align:center"><div style="font-size:15px;font-weight:800">'+esc(fmtD(selDate))+'</div><div style="font-size:10px;color:var(--mt)">'+(selDate===tod()?"Today":esc(selDate))+'</div></div>';
-      h += '<button class="pm" id="d-next">→</button>';
-      h += '</div>';
-      if (selDate !== tod()) {
-        h += '<div class="row" style="justify-content:center;margin-top:8px"><button class="btn bs" id="d-today" style="padding:6px 10px;font-size:11px">Jump to Today</button></div>';
-      }
       h += '</div></div>';
     }
 
@@ -4076,6 +4097,16 @@ var entry = { group: grp, exercise: ex, sets: [], note: note, setStyle: setStyle
   // Events
   // -----------------------------
   function bindEvents() {
+   if (!headerFxBound) {
+      headerFxBound = true;
+      var onScrollHeader = function(){
+        var header = document.getElementById('app-header');
+        if (!header) return;
+        header.classList.toggle('hdr-scrolled', (window.scrollY || 0) > 6);
+      };
+      window.addEventListener('scroll', onScrollHeader, {passive:true});
+      onScrollHeader();
+    }    
     var prev = document.getElementById("d-prev");
     var next = document.getElementById("d-next");
    if (prev) prev.onclick = function(){ selDate = addDays(selDate, -1); planSelectedDow = new Date(selDate + "T00:00:00").getDay(); sv("il_selDate", selDate); queueRender(60); };
