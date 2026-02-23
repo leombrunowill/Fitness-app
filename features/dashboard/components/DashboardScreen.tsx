@@ -90,6 +90,41 @@ function getTrendLabel(trend: BodyweightTrend) {
   return 'Not enough data';
 }
 
+function DashboardHeader({
+  firstName,
+  todayDateLabel,
+  isNameLoading,
+  onToggleDebug,
+}: {
+  firstName: string;
+  todayDateLabel: string;
+  isNameLoading: boolean;
+  onToggleDebug: () => void;
+}) {
+  return (
+    <header className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm" aria-hidden="true">👤</span>
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-300">Fitness App</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-slate-100" type="button">Theme</button>
+          <button onClick={onToggleDebug} className="text-xs text-slate-500" type="button">•••</button>
+        </div>
+      </div>
+
+      {isNameLoading ? (
+        <AppSkeleton className="h-8 w-56" />
+      ) : (
+        <p className="text-2xl font-semibold">Welcome back, {firstName} 👋</p>
+      )}
+
+      <p className="text-sm text-slate-300">{todayDateLabel}</p>
+    </header>
+  );
+}
+
 export function DashboardScreen({
   data,
   caloriesRemaining,
@@ -105,6 +140,7 @@ export function DashboardScreen({
   queueLength,
   lastRecomputeAt,
   userId,
+  isNameLoading,
 }: {
   data: DashboardData;
   caloriesRemaining: number;
@@ -120,6 +156,7 @@ export function DashboardScreen({
   queueLength: number;
   lastRecomputeAt: string | null;
   userId: string | null;
+  isNameLoading: boolean;
 }) {
   const [showDebug, setShowDebug] = useState(false);
   const noWorkouts = data.streak.longest === 0 && !data.nextWorkout;
@@ -127,13 +164,12 @@ export function DashboardScreen({
   return (
     <motion.div className="space-y-4 p-4" initial="hidden" animate="visible" variants={container}>
       <motion.div variants={item}>
-        <p className="text-2xl font-semibold">Welcome back, {data.firstName} 👋</p>
-      </motion.div>
-      <motion.div variants={item}>
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-300">{data.todayDateLabel}</p>
-          <button onClick={() => setShowDebug((v) => !v)} className="text-xs text-slate-500">•••</button>
-        </div>
+        <DashboardHeader
+          firstName={data.firstName}
+          todayDateLabel={data.todayDateLabel}
+          isNameLoading={isNameLoading}
+          onToggleDebug={() => setShowDebug((v) => !v)}
+        />
       </motion.div>
 
       {showDebug ? (

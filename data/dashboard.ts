@@ -86,9 +86,11 @@ function writeLocalDashboard(data: DashboardData) {
   window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(data));
 }
 
-function getFirstName(displayName: string | null | undefined) {
-  if (!displayName) return 'Athlete';
-  return displayName.trim().split(/\s+/)[0] || 'Athlete';
+function getFirstName(firstName: string | null | undefined, email: string | null | undefined) {
+  if (firstName?.trim()) return firstName.trim();
+  const emailPrefix = email?.split('@')[0]?.trim();
+  if (emailPrefix) return emailPrefix;
+  return 'there';
 }
 
 export function buildWorkoutStreak(workouts: WorkoutRow[]) {
@@ -192,7 +194,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const thirtyDaysAgo = toIsoDate(new Date(now.getTime() - DAY * 30));
 
   const [profileRes, goalRes, workoutsRes, setsRes, bodyweightRes, nutritionRes] = await Promise.all([
-    supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle(),
+    supabase.from('profiles').select('first_name').eq('id', userId).maybeSingle(),
     supabase.from('user_goals').select('daily_calorie_target,daily_protein_target').eq('user_id', userId).maybeSingle(),
     supabase.from('workouts').select('id,name,started_at,completed_at').eq('user_id', userId).lte('started_at', `${today}T23:59:59Z`).order('started_at', { ascending: false }),
     supabase
@@ -228,7 +230,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const primaryMuscles = Array.from(new Set(nextWorkoutSets.map((set) => set.muscle_group).filter(Boolean) as string[])).slice(0, 3);
 
   const base: DashboardData = {
-    firstName: getFirstName(profileRes.data?.display_name),
+    firstName: getFirstName(profileRes.data?.first_name, auth.user?.email),
     streak,
     adherenceScore: 0,
     nutritionAdherence: 0,
