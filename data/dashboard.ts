@@ -203,7 +203,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
       .eq('user_id', userId)
       .gte('created_at', `${thirtyDaysAgo}T00:00:00Z`),
     supabase.from('bodyweight_logs').select('weight,created_at').eq('user_id', userId).gte('created_at', `${sevenDaysAgo}T00:00:00Z`).order('created_at', { ascending: true }),
-    supabase.from('nutrition_logs').select('calories,protein,created_at').eq('user_id', userId).gte('created_at', `${today}T00:00:00Z`).lte('created_at', `${today}T23:59:59Z`),
+    supabase.from('nutrition_logs').select('calories,protein,local_date').eq('user_id', userId).eq('local_date', today),
   ]);
 
   const err = profileRes.error || goalRes.error || workoutsRes.error || setsRes.error || bodyweightRes.error || nutritionRes.error;
@@ -330,6 +330,7 @@ export async function logNutritionEntry(input: NutritionEntryInput) {
     carbs: input.carbs || 0,
     fat: input.fat || 0,
     meal_type: input.mealType || 'snack',
+    local_date: new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10),
     created_at: new Date().toISOString(),
   };
 
