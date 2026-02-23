@@ -34,6 +34,28 @@ function normalizeName(v) {
   return String(v || '').trim().toLowerCase();
 }
 
+
+let initialDashboardPromise = null;
+let initialDashboardPayload = null;
+
+export function preloadInitialDashboardData() {
+  if (initialDashboardPayload) return Promise.resolve(initialDashboardPayload);
+  if (initialDashboardPromise) return initialDashboardPromise;
+
+  const weekStartIso = isoDaysAgo(6);
+  const streakStartIso = isoDaysAgo(179);
+  initialDashboardPromise = fetchDashboardData(weekStartIso, streakStartIso)
+    .then((remote) => {
+      initialDashboardPayload = { weekStartIso, remote };
+      return initialDashboardPayload;
+    })
+    .catch((err) => {
+      initialDashboardPayload = { weekStartIso, error: err };
+      return initialDashboardPayload;
+    });
+
+  return initialDashboardPromise;
+}
 function toneFromVolume(cur, tgt) {
   if (!tgt) return 'yellow';
   if (cur < tgt * 0.7) return 'blue';
@@ -141,10 +163,12 @@ export async function initDashboard(ctx) {
   let analytics = ctx.analytics || {};
   let loadError = null;
   try {
-    const weekStartIso = isoDaysAgo(6);
-    const streakStartIso = isoDaysAgo(179);
-    const remote = await fetchDashboardData(weekStartIso, streakStartIso);
-    analytics = analyticsFromRemote(remote, analytics, weekStartIso);
+    const preloaded = await preloadInitialDashboardData();
+    if (preloaded && preloaded.error) {
+      loadError = preloaded.error;
+    } else if (preloaded && preloaded.remote) {
+      analytics = analyticsFromRemote(preloaded.remote, analytics, preloaded.weekStartIso);
+    }
   } catch (_err) {
     loadError = _err;
   }
@@ -233,4 +257,4 @@ export function initExerciseIntelligence() {
   });
 }
 
-window.IronLogDashboard = { initDashboard, initExerciseIntelligence };
+window.IronLogDashboard = { initDashboard, initExerciseIntelligence, preloadInitialDashboardData };

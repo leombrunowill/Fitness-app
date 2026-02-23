@@ -8,6 +8,43 @@
   function bootIronLogApp() {
     "use strict";
 
+  var appBootState = {
+    hydrating: true,
+    complete: false,
+    dashboardReady: false,
+    fadeApplied: false
+  };
+
+  function setAppHydrating(isHydrating) {
+    var body = document.body;
+    if (!body) return;
+    body.classList.toggle("app-hydrating", !!isHydrating);
+    body.classList.toggle("app-hydrated", !isHydrating);
+  }
+
+  function completeInitialHydration() {
+    if (appBootState.complete) return;
+    appBootState.hydrating = false;
+    appBootState.complete = true;
+    setAppHydrating(false);
+    render();
+  }
+
+  function loadInitialDashboardData() {
+    if (appBootState.dashboardReady) return Promise.resolve();
+    if (!window.IronLogDashboard || typeof window.IronLogDashboard.preloadInitialDashboardData !== "function") {
+      appBootState.dashboardReady = true;
+      return Promise.resolve();
+    }
+    return window.IronLogDashboard.preloadInitialDashboardData().catch(function() {
+      return null;
+    }).finally(function() {
+      appBootState.dashboardReady = true;
+    });
+  }
+
+  setAppHydrating(true);
+
   function showFatalScreen(msg) {
     var app = document.getElementById("app");
     if (!app) return;
@@ -903,12 +940,14 @@ var cloudSyncEnabled = true;
       }
       authMsg = "Supabase SDK not loaded.";
       authReady = true;
+      completeInitialHydration();
       return;
     }
      authInitAttempts = 0;
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       authMsg = "Set window.IRONLOG_SUPABASE_URL and window.IRONLOG_SUPABASE_ANON_KEY to enable auth.";
       authReady = true;
+      completeInitialHydration();
       return;
     }
 
@@ -920,17 +959,22 @@ var cloudSyncEnabled = true;
         authReady = true;
 if (authSession && authSession.user) {
 if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id);
-useUserSettings().hydrate().finally(function(){
-cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
+Promise.all([
+  useUserSettings().hydrate(),
+  cloudLoad(),
+  loadSocialGraph(),
+  loadInitialDashboardData()
+]).finally(function(){
+  completeInitialHydration();
 });
 } else {
           if (window.IronLogUserStore) window.IronLogUserStore.setUser(null);
-          render();
+          loadInitialDashboardData().finally(function(){ completeInitialHydration(); });
         }
       }).catch(function(err) {
         authMsg = "Session check failed: " + (err && err.message ? err.message : "Unknown error");
         authReady = true;
-        render();
+        completeInitialHydration();
       });
 
       sb.auth.onAuthStateChange(function(_event, session) {
@@ -938,17 +982,23 @@ cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ re
         if (authSession) authMsg = "";
 if (authSession && authSession.user) {
 if (window.IronLogUserStore) window.IronLogUserStore.setUser(authSession.user.id);
-useUserSettings().hydrate().finally(function(){
-cloudLoad().then(function(){ return loadSocialGraph(); }).finally(function(){ render(); });
+Promise.all([
+  useUserSettings().hydrate(),
+  cloudLoad(),
+  loadSocialGraph(),
+  loadInitialDashboardData()
+]).finally(function(){
+  completeInitialHydration();
 });
 } else {
           if (window.IronLogUserStore) window.IronLogUserStore.setUser(null);
-          render();
+          completeInitialHydration();
         }
       });
     } catch (e) {
       authMsg = "Auth initialization failed.";
       authReady = true;
+      completeInitialHydration();
     }
   }
 
@@ -2888,12 +2938,20 @@ function scanFoodBarcode() {
 
     var app = document.getElementById("app");
     if (!app) return;
-    if (!window.__ironlogSkeletonDone) {
-      window.__ironlogSkeletonDone = true;
-      app.innerHTML = '<div class="card skeleton" style="height:108px;margin-bottom:10px"></div><div class="card skeleton" style="height:160px;margin-bottom:10px"></div><div class="card skeleton" style="height:220px"></div>';
-      setTimeout(function(){ queueRender(0); }, 120);
+    if (!appBootState.complete) {
+      app.innerHTML = "";
       return;
-    } 
+    }
+
+    if (!appBootState.fadeApplied) {
+      appBootState.fadeApplied = true;
+      var shell = document.querySelector(".app-shell");
+      if (shell) {
+        shell.classList.remove("app-shell-fade-in");
+        void shell.offsetWidth;
+        shell.classList.add("app-shell-fade-in");
+      }
+    }
 var nav = document.querySelector(".bnav");
     var timerBar = document.getElementById("tbar");
     var loggedIn = isSignedIn();

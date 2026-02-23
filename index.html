@@ -13,7 +13,11 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 
-<body class="app-body AppPage">
+<body class="app-body AppPage app-hydrating">
+  <div id="app-loader" class="app-loader" role="status" aria-live="polite" aria-label="Loading app">
+    <div class="app-loader-spinner" aria-hidden="true"></div>
+    <div class="app-loader-text">Loading your profile, settings, and dashboard…</div>
+  </div>
   
   <div class="app-shell">
   <div class="hdr top-nav">
