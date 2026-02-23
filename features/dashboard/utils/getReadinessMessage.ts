@@ -1,13 +1,18 @@
-import type { DashboardData } from '../hooks/useDashboardData';
+type ReadinessData = {
+  readiness?: 'good_to_train' | 'recovery_needed' | 'behind_on_protein' | string;
+  nextWorkout?: { name?: string } | null;
+  lastWorkout?: { name?: string; snapshot?: string } | null;
+  readinessContext?: string | null;
+  goal?: { dailyProteinTarget?: number | null } | null;
+  nutritionToday?: { proteinConsumed?: number | null } | null;
+};
 
-export function getReadinessMessage(data: DashboardData) {
+export function getReadinessMessage(data: ReadinessData) {
   switch (data.readiness) {
     case 'good_to_train':
       return {
         title: `Ready to train — ${data.nextWorkout?.name ?? 'Session day'}`,
-        subtitle: data.lastWorkout
-          ? `Last session: ${data.lastWorkout.name} · ${data.lastWorkout.snapshot}`
-          : 'Your momentum is strong today.',
+        subtitle: data.lastWorkout ? `Last session: ${data.lastWorkout.name} · ${data.lastWorkout.snapshot}` : 'Your momentum is strong today.',
         tone: 'from-emerald-500/25 via-cyan-400/20 to-blue-500/20',
       };
     case 'recovery_needed':
@@ -18,7 +23,7 @@ export function getReadinessMessage(data: DashboardData) {
       };
     case 'behind_on_protein':
       return {
-        title: `You need ${Math.max((data.goal?.dailyProteinTarget ?? 0) - data.nutritionToday.proteinConsumed, 0)}g protein today`,
+        title: `You need ${Math.max((data.goal?.dailyProteinTarget ?? 0) - (data.nutritionToday?.proteinConsumed ?? 0), 0)}g protein today`,
         subtitle: 'Add a high-protein meal to stay on track.',
         tone: 'from-fuchsia-500/25 via-violet-500/20 to-indigo-500/20',
       };

@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { getSupabaseBrowserClient } from '@/supabase/browserClient';
 
 export type DashboardData = {
   firstName: string;
@@ -180,7 +180,7 @@ export function recomputeDashboard(data: DashboardData): DashboardData {
 }
 
 export async function fetchDashboardData(): Promise<DashboardData> {
-  const supabase = createClientComponentClient();
+  const supabase = getSupabaseBrowserClient();
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id;
 
@@ -260,7 +260,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 }
 
 async function getUserId() {
-  const supabase = createClientComponentClient();
+  const supabase = getSupabaseBrowserClient();
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
   const userId = data.user?.id || null;
