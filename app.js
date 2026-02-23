@@ -761,7 +761,19 @@ function showToast(msg) {
     setTimeout(function(){ if (t && t.parentNode) t.parentNode.removeChild(t); }, 220);
   }, 2200);
 }
-   
+
+function logSilent(scope, err) {
+  if (!console || !console.warn) return;
+  var detail = (err && err.message) ? err.message : err;
+  console.warn("[social] " + scope, detail || "Unknown error");
+}
+
+function friendlySocialMessage(kind) {
+  if (kind === "sync") return "We couldn’t sync your social profile right now. Please try again in a moment.";
+  if (kind === "load") return "Social features are temporarily unavailable. Please retry shortly.";
+  return "Something went wrong with social features. Please try again.";
+}
+     
 function canScanBarcode(){
   return !!(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
@@ -1523,8 +1535,9 @@ var cols = ["id", "display_name"];
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || ""));
   }
    
-  function ensureSocialProfile() {
-    if (!socialReady()) return Promise.resolve();
+  function ensureSocialProfile(opts) {
+    opts = opts || {};
+     if (!socialReady()) return Promise.resolve();
     var uid = myUserId();
     var display = (SOC.profileName || (authSession.user.email || "Athlete")).trim();
     var handle = normalizeHandle(SOC.handle || (authSession.user.email || "").split("@")[0]);
@@ -1552,8 +1565,11 @@ var cols = ["id", "display_name"];
         throw err;
       })
          .catch(function(err){
-        authMsg = "Social profile sync failed: " + ((err && err.message) ? err.message : "Unknown error");
-      });
+    logSilent("ensureSocialProfile", err);
+        var friendly = friendlySocialMessage("sync");
+        authMsg = friendly;
+        if (opts.toastOnError) showToast(friendly);
+         });
   }
 
   function fetchProfilesByIds(ids) {
@@ -1684,8 +1700,9 @@ var friendIds = [];
         socialSupportsBio = false;
         return loadSocialGraph();
       }
-      asyncUi.social.error = "Social load failed: " + ((err && err.message) ? err.message : "Set up social tables in Supabase.");
-      authMsg = asyncUi.social.error;
+ logSilent("loadSocialGraph", err);
+      asyncUi.social.error = friendlySocialMessage("load");
+       authMsg = asyncUi.social.error;
     }).finally(function(){
       asyncUi.social.loading = false;
       render();
@@ -4622,8 +4639,8 @@ var saveSocialName = document.getElementById("save-social-name");
       SOC.handle = cleanHandle ? ("@" + cleanHandle) : "";
       SOC.bio = bio;
       if (socialReady()) {
-        ensureSocialProfile().then(function(){
-          return loadSocialGraph();
+        ensureSocialProfile({ toastOnError: true }).then(function(){
+           return loadSocialGraph();
         }).finally(function(){
           saveAll();
           render();
