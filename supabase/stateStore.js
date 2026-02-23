@@ -20,6 +20,13 @@
     }
   }
 
+
+  function extractMissingProfilesColumn(error){
+    var msg = String((error && (error.message || error.details || error.hint)) || '');
+    var match = msg.match(/profiles\.([a-zA-Z0-9_]+)/i) || msg.match(/'([a-zA-Z0-9_]+)'\s+column\s+of\s+'profiles'/i);
+    return match ? match[1] : null;
+  }
+
   function validateProfileUpdate(input){
     var allowed = ['lifter_mode','experience_score','preferred_units','theme'];
     var out = pick(input || {}, allowed);
@@ -94,7 +101,10 @@
   async function getUserProfile(){
     var client = getClient();
     if (!client || !state.userId) return clone(DEFAULT_PROFILE);
-    var res = await client.from('profiles').select('id,lifter_mode,experience_score,preferred_units,theme,updated_at').eq('id', state.userId).maybeSingle();
+var res = await client.from('profiles').select(PROFILE_SELECT_COLUMNS).eq('id', state.userId).maybeSingle();
+    if (res.error && extractMissingProfilesColumn(res.error)) {
+      res = await client.from('profiles').select('*').eq('id', state.userId).maybeSingle();
+    }
     if (res.error) throw res.error;
     return Object.assign({}, DEFAULT_PROFILE, res.data || {});
   }
@@ -105,10 +115,25 @@
     if (!state.userId) throw new Error('Not signed in');
     if (!navigator.onLine && !fromQueue) { pushQueue('update_profile', payload); return state.profile; }
     var draft = Object.assign({}, state.profile, payload, { id: state.userId, updated_at: nowIso() });
-    var res = await client.from('profiles').upsert(draft, { onConflict:'id' }).select('lifter_mode,experience_score,preferred_units,theme,updated_at').maybeSingle();
-    if (res.error) throw res.error;
+    var workingDraft = Object.assign({}, draft);
+    var res = null;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      var q = client.from('profiles').upsert(workingDraft, { onConflict:'id' });
+      q = q.select(attempt === 0 ? 'lifter_mode,experience_score,preferred_units,theme,updated_at' : '*').maybeSingle();
+      res = await q;
+      if (!res.error) break;
+      var missingCol = extractMissingProfilesColumn(res.error);
+      if (!missingCol) break;
+      if (Object.prototype.hasOwnProperty.call(workingDraft, missingCol)) {
+        delete workingDraft[missingCol];
+        continue;
+      }
+      if (attempt === 0) continue;
+      break;
+    }
+    if (!res || res.error) throw (res && res.error ? res.error : new Error('Failed to update profile'));
     if (payload.lifter_mode) analytics('lifter_mode_changed', { lifter_mode: payload.lifter_mode });
-    return Object.assign({}, DEFAULT_PROFILE, res.data || draft);
+    return Object.assign({}, DEFAULT_PROFILE, res.data || workingDraft);
   }
 
   async function getUserSettings(){
