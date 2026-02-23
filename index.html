@@ -20,18 +20,30 @@
   </div>
   
   <div class="app-shell">
-  <div class="hdr top-nav">
-  <div class="hdr-in">
-<div class="row nav-left">
+<header class="hdr top-nav" id="app-header">
+    <div class="hdr-in">
+      <div class="row hdr-top-row">
         <button class="thm" id="profile-btn" aria-label="Open Profile">👤</button>
-        <div class="logo hardcore-logo" aria-label="Iron Log"><span class="logo-mark" aria-hidden="true">⛓</span><span class="logo-word">IRON LOG</span></div>
+ <div class="logo hardcore-logo" aria-label="Iron Log">
+          <span class="logo-mark" id="logo-mark" aria-hidden="true"></span>
+          <span class="logo-word">IRON LOG</span>
+        </div>
+        <button class="thm" id="thm-btn" aria-label="Toggle theme">🌙</button>
       </div>
-      <div class="row nav-right">
-        <button class="thm" id="thm-btn">🌙</button>
+     <div class="hdr-welcome-row">
+        <div class="hdr-welcome-line">Welcome back, <span id="hdr-name" class="hdr-name-skeleton">Athlete</span></div>
+        <div class="hdr-subline">Here’s your plan for today</div>
+      </div>
+      <div class="hdr-date-row" id="hdr-date-row">
+        <button class="pm" id="d-prev" aria-label="Previous day">←</button>
+        <button class="hdr-date-center" id="d-today" aria-label="Jump to today">
+          <span class="hdr-date-main" id="hdr-date-main">Today</span>
+          <span class="hdr-date-sub" id="hdr-date-sub">—</span>
+        </button>
+        <button class="pm" id="d-next" aria-label="Next day">→</button>
       </div>
     </div>
-  </div>
-
+  </header>
   <div class="tbar" id="tbar">
     <span class="rest-label">REST</span>
     <span class="ttime" id="ttime">0:00</span>
