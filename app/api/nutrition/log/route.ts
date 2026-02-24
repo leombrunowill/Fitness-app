@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient, getRouteHandlerUser } from '@/supabase/routeHandlerClient';
 
 export async function POST(request: NextRequest) {
-  const { user, error: userError } = await getRouteHandlerUser();
-
+  const { user, error: userError, token } = await getRouteHandlerUser();
+  
   if (userError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'food_name and local_date are required' }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient();
+  const supabase = createRouteHandlerClient(token);
   const { data, error } = await supabase
     .from('nutrition_logs')
     .insert(payload)
@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { user, error: userError } = await getRouteHandlerUser();
-
+  const { user, error: userError, token } = await getRouteHandlerUser();
+  
   if (userError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -53,7 +53,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient();
+  const supabase = createRouteHandlerClient(token);
   const { error } = await supabase.from('nutrition_logs').delete().eq('user_id', user.id).eq('id', id);
 
   if (error) {
