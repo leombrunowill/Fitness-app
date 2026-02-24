@@ -1378,32 +1378,35 @@ function normalizeWeightUnit(unit) {
     }
   }
 
+    var APP_STATE_WRITE_COLUMNS = ["user_id", "w", "bw", "updated_at"];
+  
   function buildCloudPayload() {
-    return {
-      user_id: authSession && authSession.user ? authSession.user.id : null,
-      pr: PR || {},
-             ncache: DN_CACHE || {},
-      nfoods: NFOODS || {},
-      user_settings: USER || {},
-      th: TH || "dark",
-      soc: SOC || {},
-      rlib: RLIB || [],
-      rsched: RSCHED || {},
+    var source = {
+     user_id: authSession && authSession.user ? authSession.user.id : null,
+      w: W || {},
+      bw: BW || {},
       updated_at: (isFinite(stateUpdatedAt) && stateUpdatedAt > 0) ? new Date(stateUpdatedAt).toISOString() : new Date().toISOString()
     };
+     var payload = {};
+    APP_STATE_WRITE_COLUMNS.forEach(function(col) {
+      if (Object.prototype.hasOwnProperty.call(source, col)) payload[col] = source[col];
+    });
+    return payload;
   }
 
   function applyCloudState(row) {
     if (!row || typeof row !== "object") return;
     cloudHydrating = true;
     try {
-      PR = row.pr || {};
-             DN_CACHE = row.ncache || {};
-      NFOODS = row.nfoods || {};
+      W = row.w || W;
+      BW = row.bw || BW;
+      PR = row.pr || PR || {};
+      DN_CACHE = row.ncache || DN_CACHE || {};
+      NFOODS = row.nfoods || NFOODS || {}; 
       var incomingUser = (row.user_settings && typeof row.user_settings === "object") ? row.user_settings : null;
       USER = normalizeUSER(incomingUser && Object.keys(incomingUser).length ? incomingUser : USER);
-      TH = row.th || "dark";
-      stateUpdatedAt = Date.parse(row.updated_at || "") || stateUpdatedAt;
+      TH = row.th || TH || "dark";
+       stateUpdatedAt = Date.parse(row.updated_at || "") || stateUpdatedAt;
       SOC = normalizeSOC(row.soc || {});
       RLIB = Array.isArray(row.rlib) ? row.rlib : [];
       RSCHED = row.rsched || {};
@@ -1422,16 +1425,23 @@ function normalizeWeightUnit(unit) {
     if (!sb || !authSession || !authSession.user) return Promise.resolve();
     var payload = buildCloudPayload();
     if (!payload.user_id) return Promise.resolve();
+         console.log("[app_state] upsert payload keys", Object.keys(payload));
 
-    return sb.from("app_state")
-      .upsert(payload, { onConflict: "user_id" })
-      .then(function(res) {
-        if (res && res.error) throw res.error;
-      })
-      .catch(function(err) {
-        authMsg = "Cloud save failed: " + ((err && err.message) ? err.message : "Unknown error");
-        render();
-      });
+   try {
+      return sb.from("app_state")
+        .upsert(payload, { onConflict: "user_id" })
+        .then(function(res) {
+          if (res && res.error) throw res.error;
+        })
+        .catch(function(err) {
+          authMsg = "Cloud save failed: " + ((err && err.message) ? err.message : "Unknown error");
+          render();
+        });
+    } catch (err) {
+      authMsg = "Cloud save failed: " + ((err && err.message) ? err.message : "Unknown error");
+      render();
+      return Promise.resolve();
+    }
   }
 
   function scheduleCloudUpsert() {
