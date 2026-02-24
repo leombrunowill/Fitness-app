@@ -46,6 +46,14 @@ const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
 
 const LOCAL_DASHBOARD_KEY = 'fitness-local-dashboard';
 
+async function parseApiBody(response: Response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 function buildLocalSeed(): DashboardData {
   const now = new Date();
   return recomputeDashboard({
@@ -184,8 +192,8 @@ export function recomputeDashboard(data: DashboardData): DashboardData {
 
 export async function fetchDashboardData(): Promise<DashboardData> {
   const supabase = getSupabaseBrowserClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth.user?.id;
+  const { data: auth } = await supabase.auth.getSession();
+  const userId = auth.session?.user?.id;
 
   if (!userId) return readLocalDashboard();
 
@@ -231,7 +239,7 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const primaryMuscles = Array.from(new Set(nextWorkoutSets.map((set) => set.muscle_group).filter(Boolean) as string[])).slice(0, 3);
 
   const base: DashboardData = {
-    firstName: getFirstName(profileRes.data?.first_name, auth.user?.email),
+    firstName: getFirstName(profileRes.data?.first_name, auth.session?.user?.email),
     streak,
     adherenceScore: 0,
     nutritionAdherence: 0,
@@ -264,10 +272,11 @@ export async function fetchDashboardData(): Promise<DashboardData> {
 
 async function getUserId() {
   const supabase = getSupabaseBrowserClient();
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  const userId = data.user?.id || null;
-  return { supabase, userId };
+  const userId = data.session?.user?.id || null;
+  const token = data.session?.access_token || null;
+  return { supabase, userId, token };
 }
 
 export async function logBodyweightEntry(value: number) {
@@ -285,40 +294,31 @@ export async function logBodyweightEntry(value: number) {
 }
 
 export async function logWorkoutEntry(input: WorkoutEntryInput) {
-  const { supabase, userId } = await getUserId();
-  const now = new Date().toISOString();
-  const name = input.name?.trim() || 'Quick workout';
-  const muscleGroup = input.muscleGroup?.trim() || 'Full body';
-  const reps = Number.isFinite(input.reps) ? Number(input.reps) : 10;
+  const { userId, token } = await getUserId();
+  if (!userId || !token) throw new Error('You must be signed in to save workouts.');
 
-  if (!userId) {
-    const current = readLocalDashboard();
-    const nextVolume = [...current.volumeStatus];
-    const found = nextVolume.find((row) => row.muscle === muscleGroup);
-    if (found) found.value = Math.min(100, found.value + reps);
-    else nextVolume.push({ muscle: muscleGroup, value: reps, status: reps < 40 ? 'undertrained' : 'optimal' });
-    const updated = recomputeDashboard({
-      ...current,
-      nextWorkout: { name, primaryMuscles: [muscleGroup], exerciseCount: 1, snapshot: `Last completed ${new Date(now).toLocaleDateString()}` },
-      volumeStatus: nextVolume,
-      recoveryScore: computeRecoveryScoreFromDate(now),
-      streak: { current: current.streak.current + 1, longest: Math.max(current.streak.longest, current.streak.current + 1) },
-    });
-    writeLocalDashboard(updated);
-    return { workout: { id: 'local', name, started_at: now, completed_at: now }, set: { muscle_group: muscleGroup, reps } };
+  const payload = {
+    name: input.name?.trim() || 'Quick workout',
+    muscle_group: input.muscleGroup?.trim() || 'Full body',
+    reps: Number.isFinite(input.reps) ? Number(input.reps) : 10,
+  };
+
+  const response = await fetch('/api/workouts/log', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = await parseApiBody(response);
+  if (!response.ok) {
+    throw new Error((body as any)?.error || 'Unable to save workout.');
   }
 
-  const workoutInsert = await supabase.from('workouts').insert({ user_id: userId, name, started_at: now, completed_at: now }).select('id,name,started_at,completed_at').single();
-  if (workoutInsert.error) throw workoutInsert.error;
-
-  const workoutId = workoutInsert.data.id;
-  const setInsert = await supabase.from('workout_sets').insert({ user_id: userId, workout_id: workoutId, muscle_group: muscleGroup, reps, completed: true, created_at: now });
-  if (setInsert.error) throw setInsert.error;
-
-  return {
-    workout: workoutInsert.data,
-    set: { muscle_group: muscleGroup, reps },
-  };
+  return (body as any).data;
 }
 
 export async function logNutritionEntry(input: NutritionEntryInput) {

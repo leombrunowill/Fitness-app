@@ -101,7 +101,6 @@ export function useDashboardData() {
   const baseMutationHandlers = {
     onError: (_error: unknown, _vars: unknown, context: { previous?: DashboardData } | undefined) => {
       if (context?.previous) queryClient.setQueryData(DASHBOARD_QUERY_KEY, context.previous);
-      pushToast('Could not sync action. Saved for retry when back online.');
     },
     onSettled: invalidateDashboard,
   };
@@ -120,12 +119,6 @@ export function useDashboardData() {
 
   const logWorkout = useMutation({
     mutationFn: logWorkoutEntry,
-    onMutate: async (input: WorkoutEntryInput) => {
-      await queryClient.cancelQueries({ queryKey: DASHBOARD_QUERY_KEY });
-      const previous = queryClient.getQueryData<DashboardData>(DASHBOARD_QUERY_KEY);
-      updateCache((current) => patchAfterWorkout(current, input));
-      return { previous };
-    },
     ...baseMutationHandlers,
   });
 
@@ -180,19 +173,40 @@ export function useDashboardData() {
 
   const safeLogBodyweight = (value: number) => {
     logBodyweight.mutate(value, {
-      onError: () => queueAction('bodyweight', value),
+      onError: (error) => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          queueAction('bodyweight', value);
+          pushToast('Offline: saved for retry when back online.');
+          return;
+        }
+        pushToast((error as Error).message || 'Failed to save bodyweight.', 'error');
+      },
     });
   };
 
   const safeLogWorkout = (input: WorkoutEntryInput) => {
     logWorkout.mutate(input, {
-      onError: () => queueAction('workout', input),
+      onError: (error) => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          queueAction('workout', input);
+          pushToast('Offline: workout saved for retry when back online.');
+          return;
+        }
+        pushToast((error as Error).message || 'Failed to save workout.', 'error');
+      },
     });
   };
 
   const safeLogNutrition = (input: NutritionEntryInput) => {
     logNutrition.mutate(input, {
-      onError: () => queueAction('nutrition', input),
+      onError: (error) => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          queueAction('nutrition', input);
+          pushToast('Offline: nutrition saved for retry when back online.');
+          return;
+        }
+        pushToast((error as Error).message || 'Failed to save nutrition.', 'error');
+      },
     });
   };
 
