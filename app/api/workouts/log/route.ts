@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient, getRouteHandlerUser } from '@/supabase/routeHandlerClient';
 
 export async function POST(request: NextRequest) {
-  const { user, error: userError } = await getRouteHandlerUser();
-
+  const { user, error: userError, token } = await getRouteHandlerUser();
+  
   if (userError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -15,8 +15,8 @@ export async function POST(request: NextRequest) {
   const muscleGroup = String(body.muscle_group || '').trim() || 'Full body';
   const reps = Number(body.reps || 0) > 0 ? Number(body.reps) : 10;
 
-  const supabase = createRouteHandlerClient();
-
+  const supabase = createRouteHandlerClient(token);
+  
   const workoutInsert = await supabase
     .from('workouts')
     .insert({ user_id: user.id, name, started_at: now, completed_at: now })
