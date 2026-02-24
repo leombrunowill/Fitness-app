@@ -6,6 +6,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionUser } from '@/components/providers/AppProviders';
 import { useToast } from '@/components/providers/ToastProvider';
 import { FavoriteFood, MEAL_TYPES, MealType } from '@/data/nutrition';
+import { getSupabaseBrowserClient } from '@/supabase/browserClient';
+import { getLocalYYYYMMDD } from '@/utils/date';
 import { nutritionKeys, useNutritionDay } from '@/hooks/useNutritionDay';
 import { useCopyYesterday, useDeleteFood, useLogFood, useNutritionRecent, useSaveFavorite } from '@/hooks/useNutritionMutations';
 
@@ -18,21 +20,16 @@ const FOOD_LIBRARY: FavoriteFood[] = [
   { id: '6', food_name: 'Whey Protein (1 scoop)', calories: 120, protein: 24, carbs: 3, fat: 2, serving_label: '1 scoop' },
 ];
 
-function todayLocalDate() {
-  const now = new Date();
-  const tzOffsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
-}
-
 function macroFmt(value: number) {
   return Math.round(value);
 }
 
 export function NutritionScreen() {
-  const localDate = todayLocalDate();
+  const localDate = getLocalYYYYMMDD();
   const { userId, loading } = useSessionUser();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
+    const supabase = getSupabaseBrowserClient();
   const [openMeal, setOpenMeal] = useState<MealType>('breakfast');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -147,6 +144,15 @@ export function NutritionScreen() {
             onClose={() => setSheetOpen(false)}
             isSaving={isSaving}
             onAdd={async (payload) => {
+                    const {
+                data: { user },
+              } = await supabase.auth.getUser();
+
+              if (!user) {
+                pushToast('Not signed in', 'error');
+                return;
+              }
+              
               try {
                 setIsSaving(true);
                 await logMutation.mutateAsync({ ...payload, mealType: openMeal });
@@ -155,7 +161,7 @@ export function NutritionScreen() {
                 await queryClient.invalidateQueries({ queryKey: nutritionKeys.recent(userId, localDate) });
                 setSheetOpen(false);
               } catch (e) {
-                pushToast(`Save failed: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+   pushToast(e instanceof Error ? e.message : 'Unknown error', 'error');
               } finally {
                 setIsSaving(false);
               }
