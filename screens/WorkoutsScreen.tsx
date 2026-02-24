@@ -44,10 +44,20 @@ export function WorkoutsScreen() {
     setError(null);
 
     const supabase = getSupabaseBrowserClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+
+    if (!session?.user?.id) {
+      setWorkouts([]);
+      setSetsByWorkoutId({});
+      setIsLoading(false);
+      return;
+    }
+    
     const workoutsRes = await supabase
       .from('workouts')
       .select('id,name,started_at,completed_at')
-      .eq('user_id', userId)
+      .eq('user_id', session.user.id)
       .order('started_at', { ascending: false });
 
     if (workoutsRes.error) {
@@ -57,6 +67,7 @@ export function WorkoutsScreen() {
     }
 
     const workoutRows = (workoutsRes.data || []) as WorkoutRow[];
+     console.debug('[workouts] scoped fetch', { sessionUserId: session.user.id, workoutsReturned: workoutRows.length });
     setWorkouts(workoutRows);
 
     const workoutIds = workoutRows.map((workout) => workout.id);
@@ -69,7 +80,7 @@ export function WorkoutsScreen() {
     const setsRes = await supabase
       .from('workout_sets')
       .select('id,workout_id,muscle_group,reps,created_at')
-      .eq('user_id', userId)
+      .eq('user_id', session.user.id)
       .in('workout_id', workoutIds)
       .order('created_at', { ascending: true });
 
