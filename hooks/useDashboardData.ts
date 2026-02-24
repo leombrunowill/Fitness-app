@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import {
   buildWorkoutStreak,
   computeRecoveryScoreFromDate,
@@ -16,25 +17,9 @@ import {
 } from '@/data/dashboard';
 import { getBodyweightTrend, type BodyweightTrend } from '@/features/dashboard/utils/getBodyweightTrend';
 import { useToast } from '@/components/providers/ToastProvider';
+import { useSessionUser } from '@/components/providers/AppProviders';
 
 export const DASHBOARD_QUERY_KEY = ['dashboard'] as const;
-
-type OfflineItem = { type: 'bodyweight' | 'workout' | 'nutrition'; payload: any };
-const OFFLINE_QUEUE_KEY = 'fitness-offline-queue';
-
-const readQueue = (): OfflineItem[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    return JSON.parse(window.localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
-  } catch {
-    return [];
-  }
-};
-
-const writeQueue = (items: OfflineItem[]) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(items));
-};
 
 function patchAfterWorkout(current: DashboardData, input: WorkoutEntryInput) {
   const now = new Date().toISOString();
@@ -72,7 +57,9 @@ function patchAfterWorkout(current: DashboardData, input: WorkoutEntryInput) {
 
 export function useDashboardData() {
   const queryClient = useQueryClient();
+    const router = useRouter();
   const { pushToast } = useToast();
+    const { userId } = useSessionUser();
   const [lastRecomputeAt, setLastRecomputeAt] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator === 'undefined' ? true : navigator.onLine);
 
@@ -101,7 +88,7 @@ export function useDashboardData() {
   const baseMutationHandlers = {
     onError: (_error: unknown, _vars: unknown, context: { previous?: DashboardData } | undefined) => {
       if (context?.previous) queryClient.setQueryData(DASHBOARD_QUERY_KEY, context.previous);
-      pushToast('Could not sync action. Saved for retry when back online.');
+      pushToast('Could not sync action. Please sign in and try again.');
     },
     onSettled: invalidateDashboard,
   };
@@ -134,66 +121,37 @@ export function useDashboardData() {
     ...baseMutationHandlers,
   });
 
-  const queueAction = useCallback((type: OfflineItem['type'], payload: any) => {
-    const queue = readQueue();
-    queue.push({ type, payload });
-    writeQueue(queue);
-  }, []);
-
-  const syncOfflineQueue = useCallback(async () => {
-    if (typeof window === 'undefined' || !navigator.onLine) return;
-    const items = readQueue();
-    if (!items.length) return;
-
-    const remaining: OfflineItem[] = [];
-    for (const item of items) {
-      try {
-        if (item.type === 'bodyweight') await logBodyweightEntry(item.payload);
-        if (item.type === 'workout') await logWorkoutEntry(item.payload);
-        if (item.type === 'nutrition') await logNutritionEntry(item.payload);
-      } catch {
-        remaining.push(item);
-      }
-    }
-
-    writeQueue(remaining);
-    if (!remaining.length) {
-      pushToast('Offline logs synced.', 'success');
-      invalidateDashboard();
-    }
-  }, [invalidateDashboard, pushToast]);
-
   useEffect(() => {
-    const onOnline = () => {
-      setIsOnline(true);
-      syncOfflineQueue();
-    };
+       const onOnline = () => setIsOnline(true);
     const onOffline = () => setIsOnline(false);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    syncOfflineQueue();
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
     };
-  }, [syncOfflineQueue]);
+}, []);
 
+  const requireSignedIn = useCallback(() => {
+    if (userId) return true;
+    pushToast('Please sign in to log workouts or nutrition.', 'error');
+    router.push('/login');
+    return false;
+  }, [pushToast, router, userId]);
+  
   const safeLogBodyweight = (value: number) => {
-    logBodyweight.mutate(value, {
-      onError: () => queueAction('bodyweight', value),
-    });
+ if (!requireSignedIn()) return;
+    logBodyweight.mutate(value);
   };
 
   const safeLogWorkout = (input: WorkoutEntryInput) => {
-    logWorkout.mutate(input, {
-      onError: () => queueAction('workout', input),
-    });
+   if (!requireSignedIn()) return;
+    logWorkout.mutate(input);
   };
 
   const safeLogNutrition = (input: NutritionEntryInput) => {
-    logNutrition.mutate(input, {
-      onError: () => queueAction('nutrition', input),
-    });
+     if (!requireSignedIn()) return;
+    logNutrition.mutate(input);
   };
 
   const selectors = useMemo(() => {
@@ -211,7 +169,7 @@ export function useDashboardData() {
     ...selectors,
     isOnline,
     lastRecomputeAt,
-    queueLength: readQueue().length,
+    queueLength: 0,
     logBodyweight: safeLogBodyweight,
     logWorkout: safeLogWorkout,
     logNutrition: safeLogNutrition,
