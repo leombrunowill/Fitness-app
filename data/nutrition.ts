@@ -2,6 +2,7 @@
 
 import { getSupabaseBrowserClient } from '@/supabase/browserClient';
 import { saveNutritionDiagnostics } from '@/data/nutritionDiagnostics';
+import { getLocalYYYYMMDD } from '@/utils/date';
 
 export const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 export type MealType = (typeof MEAL_TYPES)[number];
@@ -108,7 +109,7 @@ export async function getNutritionDay(userId: string, localDate: string): Promis
       .select('id,user_id,food_name,calories,protein,carbs,fat,meal_type,local_date,created_at')
       .eq('user_id', userId)
       .eq('local_date', localDate)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: true }),
     supabase.from('user_goals').select('daily_calorie_target,daily_protein_target').eq('user_id', userId).maybeSingle(),
   ]);
 
@@ -141,36 +142,40 @@ export async function getNutritionDay(userId: string, localDate: string): Promis
 
 export async function logFoodEntry(userId: string, payload: LogFoodPayload): Promise<NutritionEntry> {
   assertUserId(userId);
-  const token = await getAccessToken();
-  if (!token) throw new Error('Missing session token. Please sign in again.');
+const supabase = getSupabaseBrowserClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const requestPayload = {
-    food_name: payload.foodName,
-    calories: payload.calories,
-    protein: payload.protein,
-    carbs: payload.carbs ?? 0,
-    fat: payload.fat ?? 0,
-    meal_type: payload.mealType,
+ if (!user) {
+    throw new Error('Not signed in');
+  }
+
+  const insertPayload = {
+    user_id: user.id,
+  food_name: payload.foodName,
+  calories: Number(payload.calories || 0),
+    protein: Number(payload.protein || 0),
+    carbs: Number(payload.carbs || 0),
+    fat: Number(payload.fat || 0),
+    meal_type: payload.mealType ?? null,
     local_date: payload.localDate,
   };
 
-  const response = await fetch('/api/nutrition/log', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(requestPayload),
-  });
+    console.log('[nutrition] add clicked', insertPayload);
 
-  const body = await response.json();
-  saveNutritionDiagnostics({ payload: requestPayload, response: body, at: new Date().toISOString() });
+ const { data, error } = await supabase.from('nutrition_logs').insert(insertPayload).select().single();
 
-  if (!response.ok) {
-    throw new Error(body.error || 'Unable to save nutrition log.');
+  console.log('[nutrition] insert result', { data, error });
+
+  saveNutritionDiagnostics({ payload: insertPayload, response: { data, error }, at: new Date().toISOString() });
+  
+  if (error) {
+    const details = typeof error.details === 'string' && error.details ? ` ${error.details}` : '';
+    throw new Error(`${error.message}${details}`.trim());
   }
 
-  return normalizeNutritionRow(body.data);
+  return normalizeNutritionRow(data);
 }
 
 export async function deleteFoodEntry(userId: string, entryId: string): Promise<void> {
@@ -304,7 +309,7 @@ export async function logNutritionEntry(input: LogNutritionEntryInput): Promise<
   const userId = data.user?.id;
   assertUserId(userId);
 
-  const localDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  const localDate = getLocalYYYYMMDD();
   return logFoodEntry(userId, {
     foodName: input.food_name,
     calories: Number(input.calories || 0),
