@@ -12,13 +12,20 @@ function getSupabaseConfig() {
   return { url, anonKey };
 }
 
-export function createRouteHandlerClient() {
+export function createRouteHandlerClient(accessToken?: string | null) {
   const { url, anonKey } = getSupabaseConfig();
-  return createClient(url, anonKey);
+ return createClient(url, anonKey, {
+    global: accessToken
+      ? {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      : undefined,
+  });
 }
 
-export async function getRouteHandlerUser() {
-  const supabase = createRouteHandlerClient();
+function getRequestAccessToken() {
   const headerStore = headers();
   const cookieStore = cookies();
 
@@ -44,12 +51,17 @@ export async function getRouteHandlerUser() {
     }
   }
 
-  const token = bearerToken || cookieToken;
+return bearerToken || cookieToken;
+}
 
+export async function getRouteHandlerUser() {
+  const token = getRequestAccessToken();
+  
   if (!token) {
-    return { user: null, error: new Error('Missing auth token') };
+    return { user: null, error: new Error('Missing auth token'), token: null };
   }
 
+    const supabase = createRouteHandlerClient(token);
   const { data, error } = await supabase.auth.getUser(token);
-  return { user: data.user, error };
+  return { user: data.user, error, token };
 }
