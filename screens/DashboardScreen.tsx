@@ -1,12 +1,19 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppPage } from '@/components/design-system';
 import { DashboardScreen as DashboardCards, DashboardSkeleton } from '@/features/dashboard/components/DashboardScreen';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { useSessionUser } from '@/components/providers/AppProviders';
 
 export function DashboardScreen() {
-  const { userId } = useSessionUser();
+const router = useRouter();
+  const { userId, loading: userLoading } = useSessionUser();
+
+  useEffect(() => {
+    if (!userLoading && !userId) router.push('/login');
+  }, [router, userId, userLoading]);
   const {
     isPending,
     isFetching,
@@ -27,8 +34,8 @@ export function DashboardScreen() {
     lastRecomputeAt,
   } = useDashboardData();
 
-  const loading = isPending || (isFetching && !data);
-
+  const loading = userLoading || isPending || (isFetching && !data);
+  
   return (
     <AppPage>
       {loading ? (
