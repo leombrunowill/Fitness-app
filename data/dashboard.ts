@@ -43,50 +43,6 @@ type SetRow = { id: string; workout_id: string; muscle_group: string | null; sec
 const DAY = 24 * 60 * 60 * 1000;
 const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
 
-
-const LOCAL_DASHBOARD_KEY = 'fitness-local-dashboard';
-
-function buildLocalSeed(): DashboardData {
-  const now = new Date();
-  return recomputeDashboard({
-    firstName: 'Athlete',
-    streak: { current: 0, longest: 0 },
-    adherenceScore: 0,
-    nutritionAdherence: 0,
-    nextWorkout: null,
-    volumeStatus: [],
-    weakPoint: null,
-    nutritionProgress: { caloriesConsumed: 0, proteinConsumed: 0, caloriesTarget: 2200, proteinTarget: 160, calorieTargetReached: false },
-    todayBodyweight: null,
-    bodyweightLogs14d: [],
-    recoveryScore: 82,
-    todayFocus: { title: '', actionLabel: '', description: '' },
-    todayDateLabel: now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-  });
-}
-
-function readLocalDashboard(): DashboardData {
-  if (typeof window === 'undefined') return buildLocalSeed();
-  const raw = window.localStorage.getItem(LOCAL_DASHBOARD_KEY);
-  if (!raw) {
-    const seed = buildLocalSeed();
-    window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(seed));
-    return seed;
-  }
-  try {
-    return JSON.parse(raw) as DashboardData;
-  } catch {
-    const seed = buildLocalSeed();
-    window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(seed));
-    return seed;
-  }
-}
-
-function writeLocalDashboard(data: DashboardData) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LOCAL_DASHBOARD_KEY, JSON.stringify(data));
-}
-
 function getFirstName(firstName: string | null | undefined, email: string | null | undefined) {
   if (firstName?.trim()) return firstName.trim();
   const emailPrefix = email?.split('@')[0]?.trim();
@@ -187,8 +143,10 @@ export async function fetchDashboardData(): Promise<DashboardData> {
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id;
 
-  if (!userId) return readLocalDashboard();
-
+ if (!userId) {
+    throw new Error('You must be signed in to view dashboard data.');
+  }
+  
   const now = new Date();
   const today = toIsoDate(now);
   const sevenDaysAgo = toIsoDate(new Date(now.getTime() - DAY * 7));
@@ -279,12 +237,7 @@ async function getAccessToken() {
 export async function logBodyweightEntry(value: number) {
   const { supabase, userId } = await getUserId();
   const payload = { user_id: userId, weight: value, created_at: new Date().toISOString() };
-  if (!userId) {
-    const current = readLocalDashboard();
-    const updated = { ...current, todayBodyweight: { value, loggedAt: payload.created_at }, bodyweightLogs14d: [...current.bodyweightLogs14d, { value, loggedAt: payload.created_at }].slice(-14) };
-    writeLocalDashboard(updated);
-    return { value, loggedAt: payload.created_at };
-  }
+if (!userId) throw new Error('You must be signed in to log bodyweight.');
   const { error } = await supabase.from('bodyweight_logs').insert(payload);
   if (error) throw error;
   return { value, loggedAt: payload.created_at };
@@ -292,27 +245,11 @@ export async function logBodyweightEntry(value: number) {
 
 export async function logWorkoutEntry(input: WorkoutEntryInput) {
   const { userId } = await getUserId();
-  const now = new Date().toISOString();
   const name = input.name?.trim() || 'Quick workout';
   const muscleGroup = input.muscleGroup?.trim() || 'Full body';
   const reps = Number.isFinite(input.reps) ? Number(input.reps) : 10;
 
-  if (!userId) {
-    const current = readLocalDashboard();
-    const nextVolume = [...current.volumeStatus];
-    const found = nextVolume.find((row) => row.muscle === muscleGroup);
-    if (found) found.value = Math.min(100, found.value + reps);
-    else nextVolume.push({ muscle: muscleGroup, value: reps, status: reps < 40 ? 'undertrained' : 'optimal' });
-    const updated = recomputeDashboard({
-      ...current,
-      nextWorkout: { name, primaryMuscles: [muscleGroup], exerciseCount: 1, snapshot: `Last completed ${new Date(now).toLocaleDateString()}` },
-      volumeStatus: nextVolume,
-      recoveryScore: computeRecoveryScoreFromDate(now),
-      streak: { current: current.streak.current + 1, longest: Math.max(current.streak.longest, current.streak.current + 1) },
-    });
-    writeLocalDashboard(updated);
-    return { workout: { id: 'local', name, started_at: now, completed_at: now }, set: { muscle_group: muscleGroup, reps } };
-  }
+    if (!userId) throw new Error('You must be signed in to log workouts.');
 
 const token = await getAccessToken();
   if (!token) throw new Error('Missing session token. Please sign in again.');
