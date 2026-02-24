@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient, getRouteHandlerUser } from '@/supabase/routeHandlerClient';
 
+const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
+
+function isValidLocalDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function toNumber(value: unknown) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export async function POST(request: NextRequest) {
   const { user, error: userError } = await getRouteHandlerUser();
-
   if (userError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -14,21 +24,20 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
   }
-  const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
-  const mealType = MEAL_TYPES.includes(body.meal_type) ? body.meal_type : 'snack';
 
+  const mealType = MEAL_TYPES.includes(body.meal_type) ? body.meal_type : 'snack';
   const payload = {
     user_id: user.id,
     food_name: String(body.food_name || '').trim(),
-    calories: Number(body.calories || 0),
-    protein: Number(body.protein || 0),
-    carbs: Number(body.carbs || 0),
-    fat: Number(body.fat || 0),
+    calories: toNumber(body.calories),
+    protein: toNumber(body.protein),
+    carbs: toNumber(body.carbs),
+    fat: toNumber(body.fat),
     meal_type: mealType,
     local_date: String(body.local_date || ''),
   };
 
-  if (!payload.food_name || !/^\d{4}-\d{2}-\d{2}$/.test(payload.local_date)) {
+  if (!payload.food_name || !isValidLocalDate(payload.local_date)) {
     return NextResponse.json({ error: 'food_name and valid local_date are required' }, { status: 400 });
   }
 
@@ -48,7 +57,6 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const { user, error: userError } = await getRouteHandlerUser();
-
   if (userError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
