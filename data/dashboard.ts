@@ -270,6 +270,12 @@ async function getUserId() {
   return { supabase, userId };
 }
 
+async function getAccessToken() {
+  const supabase = getSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
+}
+
 export async function logBodyweightEntry(value: number) {
   const { supabase, userId } = await getUserId();
   const payload = { user_id: userId, weight: value, created_at: new Date().toISOString() };
@@ -285,7 +291,7 @@ export async function logBodyweightEntry(value: number) {
 }
 
 export async function logWorkoutEntry(input: WorkoutEntryInput) {
-  const { supabase, userId } = await getUserId();
+  const { userId } = await getUserId();
   const now = new Date().toISOString();
   const name = input.name?.trim() || 'Quick workout';
   const muscleGroup = input.muscleGroup?.trim() || 'Full body';
@@ -308,17 +314,24 @@ export async function logWorkoutEntry(input: WorkoutEntryInput) {
     return { workout: { id: 'local', name, started_at: now, completed_at: now }, set: { muscle_group: muscleGroup, reps } };
   }
 
-  const workoutInsert = await supabase.from('workouts').insert({ user_id: userId, name, started_at: now, completed_at: now }).select('id,name,started_at,completed_at').single();
-  if (workoutInsert.error) throw workoutInsert.error;
+const token = await getAccessToken();
+  if (!token) throw new Error('Missing session token. Please sign in again.');
 
-  const workoutId = workoutInsert.data.id;
-  const setInsert = await supabase.from('workout_sets').insert({ user_id: userId, workout_id: workoutId, muscle_group: muscleGroup, reps, completed: true, created_at: now });
-  if (setInsert.error) throw setInsert.error;
+  const response = await fetch('/api/workouts/log', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ name, muscle_group: muscleGroup, reps }),
+  });
 
-  return {
-    workout: workoutInsert.data,
-    set: { muscle_group: muscleGroup, reps },
-  };
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || 'Unable to save workout log.');
+  }
+
+    return body.data;
 }
 
 export async function logNutritionEntry(input: NutritionEntryInput) {
